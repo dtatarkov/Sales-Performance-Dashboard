@@ -1,0 +1,1507 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sales Performance Dashboard — Состояния</title>
+<style>
+  :root {
+    --bg: #f5f6f8;
+    --card-bg: #ffffff;
+    --border: #e8eaed;
+    --text: #1a1a1a;
+    --text-secondary: #6b7280;
+    --text-tertiary: #9ca3af;
+    --accent-blue: #3b82f6;
+    --accent-green: #10b981;
+    --accent-orange: #f59e0b;
+    --accent-red: #ef4444;
+    --accent-gray: #6b7280;
+    --skeleton: #e8eaed;
+    --skeleton-shine: #f3f4f6;
+    --shadow: 0 1px 3px rgba(0,0,0,0.06);
+    --radius: 12px;
+    --radius-sm: 8px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.4;
+  }
+
+  /* State switcher */
+  .state-switcher {
+    position: sticky; top: 0; z-index: 100;
+    background: #1a1a1a; padding: 12px 24px;
+    display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  }
+  .state-switcher span { color: #9ca3af; font-size: 12px; margin-right: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .state-btn {
+    background: #374151; color: #d1d5db; border: none;
+    padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 13px;
+    transition: all 0.15s;
+  }
+  .state-btn:hover { background: #4b5563; color: #fff; }
+  .state-btn.active { background: var(--accent-blue); color: #fff; }
+  .state-page { display: none; max-width: 1200px; margin: 0 auto; padding: 16px; }
+  .state-page.active { display: block; }
+
+  /* Header & Toolbar */
+  .header { font-size: 20px; font-weight: 600; margin-bottom: 20px; }
+  .toolbar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding-bottom: 16px; border-bottom: 1px solid var(--border); margin-bottom: 20px;
+    position: sticky; top: 52px; background: var(--bg); z-index: 50; padding-top: 8px;
+  }
+  .toolbar-left, .toolbar-right { display: flex; align-items: center; gap: 8px; }
+  .seg-control { display: flex; gap: 0; background: #e8eaed; border-radius: 8px; padding: 2px; }
+  .seg-btn {
+    border: none; background: transparent; padding: 6px 14px; border-radius: 6px;
+    font-size: 13px; cursor: pointer; color: var(--text-secondary);
+  }
+  .seg-btn.active { background: #fff; color: var(--text); font-weight: 500; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
+  .period-label { font-size: 12px; color: var(--text-tertiary); margin-top: 4px; }
+
+  /* Dashboard container — 12-col grid, matches real .dashboard */
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+
+  /* KPI row — 6 cards, each span 2 */
+  .kpi-card {
+    grid-column: span 2;
+    height: 170px;
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px;
+    display: flex; flex-direction: column; min-width: 0;
+  }
+
+  /* Standard card — span 6, height 600px (matches real .card + .card-half) */
+  .card {
+    grid-column: span 6;
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 16px;
+    display: flex; flex-direction: column; min-width: 0;
+    height: 600px;
+  }
+  /* Compact loss cards row — height 450px (matches real .card-sm) */
+  .card.sm { height: 450px; }
+  /* Card head — title + seg, matches real .card-head */
+  .card-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; flex-shrink: 0; }
+  .card-title { font-weight: 600; font-size: 15px; }
+  /* Card body — scrollable region, matches real .card-body */
+  .card-body { flex: 1; min-height: 0; position: relative; overflow-y: auto; overscroll-behavior: contain; }
+
+  /* --- Compatibility layout for states 4 & 5 (hand-built empty/partial states) --- */
+  /* KPI row: 6 equal cards per row */
+  .kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; margin-bottom: 16px; }
+  .kpi-row .kpi-card { grid-column: auto; }
+  .kpi-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); margin-bottom: 6px; }
+  .kpi-value { font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
+  .kpi-delta { font-size: 12px; margin-top: 4px; }
+  .kpi-delta.up { color: var(--accent-green); }
+  .kpi-delta.down { color: var(--accent-red); }
+  .kpi-spark { margin-top: auto; height: 24px; display: flex; align-items: flex-end; gap: 2px; }
+  .kpi-spark span { flex: 1; background: var(--accent-blue); opacity: 0.3; border-radius: 1px; min-height: 2px; }
+
+  /* Two-column card grid */
+  .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+  .card-grid .card { grid-column: auto; }
+  .card-grid .card.std { height: 600px; }
+  .card-grid .card.small { height: 450px; }
+  .card-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; flex-shrink: 0; }
+
+  /* Generic bar (loss-card sparklines in state 5) */
+  .bar { flex: 1; border-radius: 2px; min-height: 2px; }
+
+  /* Skeleton — gradient shimmer */
+  .sk {
+    background: linear-gradient(90deg, var(--skeleton) 25%, var(--skeleton-shine) 50%, var(--skeleton) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.8s ease-in-out infinite;
+    border-radius: 4px;
+  }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  .sk-line { height: 10px; margin-bottom: 6px; }
+  .sk-line.w10 { width: 10%; } .sk-line.w15 { width: 15%; }
+  .sk-line.w20 { width: 20%; } .sk-line.w25 { width: 25%; } .sk-line.w30 { width: 30%; }
+  .sk-line.w35 { width: 35%; } .sk-line.w40 { width: 40%; } .sk-line.w45 { width: 45%; }
+  .sk-line.w50 { width: 50%; } .sk-line.w55 { width: 55%; } .sk-line.w60 { width: 60%; }
+  .sk-line.w70 { width: 70%; } .sk-line.w80 { width: 80%; } .sk-line.w100 { width: 100%; }
+  .sk-block { height: 32px; border-radius: 6px; }
+  .sk-circle { width: 24px; height: 24px; border-radius: 50%; }
+  .sk-avatar-sm { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; }
+  .sk-square { width: 24px; height: 24px; border-radius: 6px; flex-shrink: 0; }
+  .sk-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .sk-bar { height: 4px; border-radius: 2px; }
+  .sk-bar-track { width: 90px; height: 4px; background: #f3f4f6; border-radius: 2px; flex-shrink: 0; overflow: hidden; }
+  .sk-bar-track .sk { height: 100%; border-radius: 2px; }
+
+  /* Skeleton row */
+  .sk-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .sk-row .sk-line { flex: 1; }
+
+  /* Skeleton: leaderboard row (matches lb-row structure) */
+  .sk-lb-row { display: flex; align-items: flex-start; gap: 10px; padding: 14px 0; border-bottom: 1px solid #f0f1f3; }
+  .sk-lb-row:last-child { border-bottom: none; }
+  .sk-lb-body { flex: 1; min-width: 0; }
+  .sk-lb-top { display: flex; align-items: center; gap: 10px; }
+  .sk-lb-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #f0f1f3; }
+  .sk-lb-metric { display: flex; flex-direction: column; gap: 3px; }
+
+  /* Skeleton: top-products row */
+  .sk-tp-row { padding: 14px 0; border-bottom: 1px solid #f0f1f3; }
+  .sk-tp-row:last-child { border-bottom: none; }
+  .sk-tp-line1 { display: flex; align-items: center; gap: 10px; }
+  .sk-tp-sub { margin-left: 34px; margin-top: 3px; }
+  .sk-tp-l2 { margin-left: 34px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #f0f1f3; display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  .sk-tp-l2-cell { display: flex; flex-direction: column; gap: 3px; }
+
+  /* Skeleton: sale item */
+  .sk-sale-item { padding: 10px 0; border-bottom: 1px solid #f0f1f3; }
+  .sk-sale-item:last-child { border-bottom: none; }
+  .sk-sale-head { display: flex; align-items: center; gap: 8px; }
+  .sk-sale-badge { width: 84px; height: 20px; border-radius: 20px; margin-left: auto; flex-shrink: 0; }
+  .sk-sale-meta { margin-top: 4px; }
+
+  /* Skeleton: loss card */
+  .sk-loss-top { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+  .sk-loss-spark { display: flex; gap: 2px; height: 30px; margin: 8px 0; }
+  .sk-loss-spark .sk { flex: 1; border-radius: 1px; }
+  .sk-loss-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid #f0f1f3; }
+  .sk-loss-row:last-child { border-bottom: none; }
+  .sk-loss-bar { width: 60px; height: 12px; border-radius: 6px; flex-shrink: 0; }
+
+  /* Skeleton: comparison chart (grouped bars) */
+  .sk-comp-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .sk-comp-bars { flex: 1; display: flex; align-items: flex-end; gap: 3px; height: 36px; }
+  .sk-comp-bars .sk { flex: 1; border-radius: 2px; }
+
+  /* Skeleton: divergent chart (client dynamics) */
+  .sk-dyn-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+  .sk-dyn-track { flex: 1; height: 16px; background: #f3f4f6; border-radius: 3px; position: relative; overflow: hidden; }
+  .sk-dyn-track .sk { position: absolute; top: 0; height: 100%; }
+
+  /* Skeleton: donut */
+  .sk-donut-wrap { display: flex; align-items: center; gap: 24px; flex: 1; }
+  .sk-donut { width: 160px; height: 160px; border-radius: 50%; border: 24px solid var(--skeleton); flex-shrink: 0; animation: shimmer 1.8s ease-in-out infinite; }
+  .sk-donut-legend { flex: 1; }
+  .sk-donut-legend-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .sk-donut-legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+
+  /* Skeleton: bar chart (time series) */
+  .sk-chart-area { flex: 1; display: flex; align-items: flex-end; gap: 3px; padding-top: 12px; }
+  .sk-chart-area .sk { flex: 1; border-radius: 2px 2px 0 0; }
+
+  /* Notification toast */
+  .toast {
+    position: fixed; top: 64px; left: 50%; transform: translateX(-50%);
+    background: #1a1a1a; color: #fff; padding: 6px 10px; border-radius: 8px;
+    display: inline-flex; align-items: center; gap: 8px; z-index: 200;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.22); font-size: 12px;
+    max-width: calc(100vw - 32px); min-height: 32px;
+  }
+  .toast > span { line-height: 1.25; white-space: nowrap; }
+  .toast-spinner {
+    width: 13px; height: 13px; border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .toast-icon {
+    width: 15px; height: 15px; border-radius: 50%; display: flex; align-items: center;
+    justify-content: center; font-size: 11px; line-height: 1; flex-shrink: 0;
+  }
+  .toast-icon.error { background: var(--accent-red); color: #fff; }
+  .toast-icon.loading { background: var(--accent-blue); }
+  .toast-btn {
+    background: rgba(255,255,255,0.15); color: #fff; border: none;
+    padding: 3px 9px; border-radius: 5px; cursor: pointer; font-size: 11px;
+  }
+  .toast-btn:hover { background: rgba(255,255,255,0.25); }
+
+  /* Empty state inside card */
+  .empty-state {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; color: var(--text-tertiary); gap: 8px; padding: 20px;
+  }
+  .empty-icon {
+    width: 48px; height: 48px; border-radius: 50%; background: #f3f4f6;
+    display: flex; align-items: center; justify-content: center; margin-bottom: 4px;
+    color: var(--text-tertiary);
+  }
+  .empty-icon svg { width: 24px; height: 24px; }
+  .empty-title { font-size: 14px; font-weight: 500; color: var(--text-secondary); }
+  .empty-subtitle { font-size: 12px; color: var(--text-tertiary); }
+
+  /* Full-page empty */
+  .page-empty {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 60vh; text-align: center; gap: 12px;
+  }
+  .page-empty .empty-icon { width: 64px; height: 64px; }
+  .page-empty .empty-icon svg { width: 32px; height: 32px; }
+  .page-empty h2 { font-size: 18px; font-weight: 600; }
+  .page-empty p { font-size: 14px; color: var(--text-secondary); max-width: 360px; }
+  .retry-btn {
+    background: var(--accent-blue); color: #fff; border: none;
+    padding: 10px 24px; border-radius: 8px; cursor: pointer; font-size: 14px; font-weight: 500;
+  }
+  .retry-btn:hover { background: #2563eb; }
+
+  /* Mini chart */
+  .mini-chart { flex: 1; display: flex; align-items: flex-end; gap: 2px; padding: 10px 0; }
+  .mini-chart .bar { flex: 1; border-radius: 2px 2px 0 0; min-height: 2px; }
+  .bar-blue { background: var(--accent-blue); opacity: 0.7; }
+  .bar-green { background: var(--accent-green); opacity: 0.7; }
+
+  /* List row */
+  .list-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }
+  .list-row:last-child { border-bottom: none; }
+  .list-row .name { font-weight: 500; font-size: 13px; flex-shrink: 0; }
+  .list-row .context { font-size: 11px; color: var(--text-tertiary); }
+  .list-row .bar-track { flex: 1; height: 6px; background: #f3f4f6; border-radius: 3px; overflow: hidden; }
+  .list-row .bar-fill { height: 100%; border-radius: 3px; }
+  .list-row .value { font-weight: 600; font-size: 13px; }
+  .list-row .contribution { font-size: 11px; color: var(--text-tertiary); width: 60px; text-align: right; }
+
+  /* Tab buttons */
+  .tab-buttons { display: flex; gap: 4px; }
+  .tab-btn {
+    border: none; background: #f3f4f6; padding: 4px 12px; border-radius: 6px;
+    font-size: 12px; cursor: pointer; color: var(--text-secondary);
+  }
+  .tab-btn.active { background: var(--accent-blue); color: #fff; }
+
+  /* Donut */
+  .donut-wrap { display: flex; align-items: center; gap: 20px; flex: 1; }
+  .donut {
+    width: 120px; height: 120px; border-radius: 50%; flex-shrink: 0;
+    background: conic-gradient(var(--accent-blue) 0% 35%, var(--accent-green) 35% 60%, var(--accent-orange) 60% 80%, var(--accent-gray) 80% 100%);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .donut::after { content: ''; width: 60px; height: 60px; background: var(--card-bg); border-radius: 50%; }
+  .donut-legend { flex: 1; }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 12px; margin-bottom: 6px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+
+  /* Recent sale row */
+  .sale-row { padding: 10px 0; border-bottom: 1px solid #f3f4f6; }
+  .sale-row:last-child { border-bottom: none; }
+  .sale-line1 { display: flex; justify-content: space-between; align-items: center; }
+  .sale-line1 .info { font-size: 13px; }
+  .sale-line1 .info .client { font-weight: 500; }
+  .sale-line1 .info .sep { color: var(--text-tertiary); margin: 0 4px; }
+  .sale-badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 500; }
+  .badge-paid { background: #d1fae5; color: #065f46; }
+  .badge-refund { background: #fee2e2; color: #991b1b; }
+  .badge-cancel { background: #f3f4f6; color: #6b7280; }
+  .sale-line2 { font-size: 12px; color: var(--text-tertiary); margin-top: 2px; }
+
+  /* Loss card */
+  .loss-top { display: flex; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+  .loss-value { font-size: 24px; font-weight: 700; }
+  .loss-rate { font-size: 13px; color: var(--text-secondary); }
+  .loss-delta { font-size: 11px; }
+  .loss-delta.up { color: var(--accent-red); }
+  .loss-delta.down { color: var(--accent-green); }
+
+  .state-label {
+    display: inline-block; background: #eef; color: #4338ca; padding: 2px 10px;
+    border-radius: 6px; font-size: 12px; margin-bottom: 16px;
+  }
+
+  .row-label { font-size: 11px; color: var(--text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; margin: 20px 0 8px; }
+
+  /* Loaded state = the real dashboard.html rendered as-is inside a frame.
+     The dashboard body has min-width:1200px, so the frame is allowed to scroll
+     horizontally on narrow viewports instead of breaking the dashboard layout. */
+  .dashboard-frame {
+    display: block;
+    width: 100%;
+    min-width: 1224px;
+    height: calc(100vh - 140px);
+    min-height: 900px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: #fff;
+  }
+
+  /* ===================================================================
+     State 5 (Нет данных по отдельному блоку) — заполненные карточки
+     повторяют реальную разметку dashboard.html. Классы .lb-*, .tp-*,
+     .loss-* скопированы 1:1 из реального приложения и ограничены #state-4,
+     чтобы не конфликтовать с остальными состояниями.
+     =================================================================== */
+  #state-4 { --success: #10b981; --danger: #ef4444; --accent: #3b82f6; --surface: #fff; --text2: #6b7280; }
+
+  /* --- Leaderboard / Clients row --- */
+  #state-4 .lb-list { display: flex; flex-direction: column; }
+  #state-4 .lb-row { display: flex; align-items: flex-start; gap: 10px; padding: 14px 0; border-bottom: 1px solid #f0f1f3; flex-shrink: 0; }
+  #state-4 .lb-row:last-child { border-bottom: none; }
+  #state-4 .lb-pos-dot { display: flex; align-items: center; justify-content: center; width: 24px; flex-shrink: 0; align-self: flex-start; }
+  #state-4 .avatar-sm { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 10px; font-weight: 600; flex-shrink: 0; }
+  #state-4 .lb-cmark { width: 24px; height: 24px; border-radius: 6px; background: #eef1f5; color: var(--text2); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; }
+  #state-4 .lb-body { flex: 1; min-width: 0; display: grid; grid-template-columns: 1fr 1fr auto; column-gap: 10px; row-gap: 2px; align-items: center; }
+  #state-4 .lb-name { grid-column: 1/3; grid-row: 1; font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #state-4 .lb-nums { grid-column: 3; grid-row: 1; display: flex; align-items: center; gap: 10px; }
+  #state-4 .lb-bar-wrap { margin-left: auto; width: 90px; height: 4px; background: #f3f4f6; border-radius: 2px; overflow: hidden; flex-shrink: 0; }
+  #state-4 .lb-bar { height: 100%; border-radius: 2px; }
+  #state-4 .lb-val { font-size: 13px; font-weight: 700; color: var(--text); min-width: 80px; text-align: right; }
+  #state-4 .lb-line2 { grid-column: 1/3; grid-row: 2; font-size: 11px; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #state-4 .lb-contribution { grid-column: 3; grid-row: 2; text-align: right; font-size: 11px; color: var(--accent); font-weight: 600; }
+  #state-4 .lb-l2 { grid-column: 1/-1; grid-row: 3; margin-top: 10px; padding-top: 8px; border-top: 1px solid #f0f1f3; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  #state-4 .lb-l2-item { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  #state-4 .lb-l2-label { font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: .3px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #state-4 .lb-l2-val { font-size: 12px; color: var(--text); font-weight: 600; white-space: nowrap; }
+  #state-4 .lb-l2-delta { font-size: 10px; font-weight: 600; white-space: nowrap; }
+  #state-4 .lb-l2-delta.up { color: var(--success); }
+  #state-4 .lb-l2-delta.down { color: var(--danger); }
+  #state-4 .lb-l2-delta.flat { color: #9ca3af; }
+
+  /* --- Top products row --- */
+  #state-4 .tp-list { display: flex; flex-direction: column; }
+  #state-4 .tp-item { padding: 14px 0; border-bottom: 1px solid #f0f1f3; flex-shrink: 0; }
+  #state-4 .tp-item:last-child { border-bottom: none; }
+  #state-4 .tp-line1 { display: flex; align-items: center; gap: 10px; }
+  #state-4 .tp-pos-dot { display: flex; align-items: center; justify-content: center; width: 24px; flex-shrink: 0; }
+  #state-4 .tp-dot { width: 10px; height: 10px; border-radius: 50%; }
+  #state-4 .tp-title { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #state-4 .tp-bar-wrap { margin-left: auto; width: 90px; height: 4px; background: #f3f4f6; border-radius: 2px; overflow: hidden; flex-shrink: 0; }
+  #state-4 .tp-bar { height: 100%; border-radius: 2px; }
+  #state-4 .tp-value { font-size: 13px; font-weight: 700; color: var(--text); min-width: 80px; text-align: right; }
+  #state-4 .tp-line2 { margin-left: 34px; margin-right: 90px; font-size: 11px; color: var(--text2); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #state-4 .tp-l2 { margin-left: 34px; margin-right: 90px; margin-top: 10px; padding-top: 8px; border-top: 1px solid #f0f1f3; display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+  #state-4 .tp-l2-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  #state-4 .tp-l2-label { font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: .3px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #state-4 .tp-l2-val { font-size: 12px; color: var(--text); font-weight: 600; white-space: nowrap; }
+  #state-4 .tp-l2-val.pos { color: var(--success); }
+  #state-4 .tp-l2-val.muted { color: #9ca3af; font-weight: 500; font-style: italic; }
+  #state-4 .tp-delta { font-size: 10px; font-weight: 600; white-space: nowrap; }
+  #state-4 .tp-delta.up { color: var(--success); }
+  #state-4 .tp-delta.down { color: var(--danger); }
+  #state-4 .tp-delta.flat { color: #9ca3af; }
+
+  /* --- Loss card (Возвраты / Отмены) --- */
+  #state-4 .loss-wrap { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+  #state-4 .loss-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  #state-4 .loss-big { font-size: 1.5rem; font-weight: 800; line-height: 1.15; }
+  #state-4 .loss-rate { font-size: .9rem; font-weight: 700; white-space: nowrap; }
+  #state-4 .loss-rate .lbl { font-size: .68rem; font-weight: 500; color: var(--text2); margin-right: 4px; }
+  #state-4 .loss-delta { font-size: .72rem; font-weight: 600; margin-left: 6px; }
+  #state-4 .loss-delta.worse { color: var(--danger); }
+  #state-4 .loss-delta.better { color: var(--success); }
+  #state-4 .loss-delta.flat { color: #9ca3af; }
+  #state-4 .loss-spark { width: 100%; height: 30px; margin: 6px 0 2px; flex-shrink: 0; }
+  #state-4 .loss-top-h { font-size: .66rem; text-transform: uppercase; letter-spacing: .04em; color: var(--text2); margin: 8px 0 2px; flex-shrink: 0; }
+  #state-4 .loss-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; }
+  #state-4 .loss-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: .78rem; min-height: 26px; border-bottom: 1px solid #f0f1f3; flex-shrink: 0; }
+  #state-4 .loss-row:last-child { border-bottom: none; }
+  #state-4 .loss-rank { color: #9ca3af; font-weight: 600; min-width: 18px; }
+  #state-4 .loss-obj { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #state-4 .loss-obj .sub { color: var(--text2); font-size: .68rem; }
+  #state-4 .loss-bar-wrap { width: 60px; height: 12px; background: #f3f4f6; border-radius: 6px; overflow: hidden; flex-shrink: 0; }
+  #state-4 .loss-bar { display: block; height: 100%; border-radius: 6px; background: var(--danger); opacity: .75; }
+  #state-4 .loss-sum { font-weight: 700; min-width: 80px; text-align: right; white-space: nowrap; }
+  #state-4 .loss-share { color: var(--accent); font-weight: 600; min-width: 46px; text-align: right; font-size: .72rem; }
+
+  /* --- Trend chart (Динамика во времени) --- */
+  #state-4 .trend-chart { width: 100%; height: 100%; display: block; }
+
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="icon-empty" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M22 12h-6l-2 3h-4l-2-3H2"/>
+    <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>
+  </symbol>
+</defs></svg>
+
+
+<!-- State switcher -->
+<div class="state-switcher">
+  <span>Состояния</span>
+  <button class="state-btn active" onclick="showState(0)">1 · Initial Loader</button>
+  <button class="state-btn" onclick="showState(1)">2 · Loading (смена периода)</button>
+  <button class="state-btn" onclick="showState(2)">3A · Ошибка API (initial)</button>
+  <button class="state-btn" onclick="showState('2b')">3B · Ошибка API (данные есть)</button>
+  <button class="state-btn" onclick="showState(3)">4 · Пустой период</button>
+  <button class="state-btn" onclick="showState(4)">5 · Нет данных по блоку</button>
+</div>
+
+<!-- ============ STATE 1: Initial Loader ============ -->
+<div class="state-page active" id="state-0">
+  <div class="state-label">Состояние: Initial Loader — skeleton по форме контента</div>
+  <div class="header">Sales Performance Dashboard</div>
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <div class="seg-control">
+        <button class="seg-btn active">7 дней</button>
+        <button class="seg-btn">30 дней</button>
+        <button class="seg-btn">Этот месяц</button>
+      </div>
+    </div>
+    <div class="toolbar-right">
+      <div class="seg-control">
+        <button class="seg-btn">Крупный</button>
+        <button class="seg-btn">Средний</button>
+        <button class="seg-btn">Малый</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Skeleton dashboard — 12-col grid, matches real .dashboard -->
+  <div class="dashboard-grid">
+
+    <!-- Row 0: 6 KPI cards (each span 2, height 170px) -->
+    <div class="kpi-card">
+      <div class="sk sk-line w40" style="height:10px"></div>
+      <div class="sk sk-line w60" style="height:22px;margin-top:8px"></div>
+      <div class="sk sk-line w30" style="height:12px;margin-top:4px"></div>
+      <div class="sk" style="margin-top:auto;height:44px;border-radius:6px"></div>
+    </div>
+    <div class="kpi-card">
+      <div class="sk sk-line w40" style="height:10px"></div>
+      <div class="sk sk-line w60" style="height:22px;margin-top:8px"></div>
+      <div class="sk sk-line w30" style="height:12px;margin-top:4px"></div>
+      <div class="sk" style="margin-top:auto;height:44px;border-radius:6px"></div>
+    </div>
+    <div class="kpi-card">
+      <div class="sk sk-line w40" style="height:10px"></div>
+      <div class="sk sk-line w60" style="height:22px;margin-top:8px"></div>
+      <div class="sk sk-line w30" style="height:12px;margin-top:4px"></div>
+      <div class="sk" style="margin-top:auto;height:44px;border-radius:6px"></div>
+    </div>
+    <div class="kpi-card">
+      <div class="sk sk-line w40" style="height:10px"></div>
+      <div class="sk sk-line w60" style="height:22px;margin-top:8px"></div>
+      <div class="sk sk-line w30" style="height:12px;margin-top:4px"></div>
+      <div class="sk" style="margin-top:auto;height:44px;border-radius:6px"></div>
+    </div>
+    <div class="kpi-card">
+      <div class="sk sk-line w40" style="height:10px"></div>
+      <div class="sk sk-line w60" style="height:22px;margin-top:8px"></div>
+      <div class="sk sk-line w30" style="height:12px;margin-top:4px"></div>
+      <div class="sk" style="margin-top:auto;height:44px;border-radius:6px"></div>
+    </div>
+    <div class="kpi-card">
+      <div class="sk sk-line w40" style="height:10px"></div>
+      <div style="display:flex;gap:10px;margin-top:6px;align-items:flex-start">
+        <div class="sk sk-avatar-sm" style="width:36px;height:36px"></div>
+        <div style="flex:1">
+          <div class="sk sk-line w50" style="height:13px"></div>
+          <div class="sk sk-line w70" style="height:10px;margin-top:4px"></div>
+          <div class="sk sk-line w40" style="height:10px;margin-top:4px"></div>
+        </div>
+      </div>
+      <div class="sk" style="margin-top:auto;height:44px;border-radius:6px"></div>
+    </div>
+
+    <!-- Row 1: Leaderboard (span 6) + Comparison (span 6) -->
+    <div class="card">
+      <div class="card-head">
+        <div class="sk sk-line" style="width:160px;height:15px;margin:0"></div>
+        <div class="sk" style="width:140px;height:30px;border-radius:8px"></div>
+      </div>
+      <div class="card-body">
+        <div class="sk-lb-row"><div class="sk sk-avatar-sm"></div><div class="sk-lb-body"><div class="sk-lb-top"><div class="sk sk-line" style="flex:1;height:13px;margin:0"></div><div class="sk sk-bar-track"><div class="sk" style="width:85%"></div></div><div class="sk sk-line w15" style="height:13px;margin:0;min-width:80px"></div></div><div class="sk sk-line w45" style="height:10px;margin-top:4px"></div><div class="sk-lb-metrics"><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div></div></div></div>
+        <div class="sk-lb-row"><div class="sk sk-avatar-sm"></div><div class="sk-lb-body"><div class="sk-lb-top"><div class="sk sk-line" style="flex:1;height:13px;margin:0"></div><div class="sk sk-bar-track"><div class="sk" style="width:64%"></div></div><div class="sk sk-line w15" style="height:13px;margin:0;min-width:80px"></div></div><div class="sk sk-line w40" style="height:10px;margin-top:4px"></div><div class="sk-lb-metrics"><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div></div></div></div>
+        <div class="sk-lb-row"><div class="sk sk-avatar-sm"></div><div class="sk-lb-body"><div class="sk-lb-top"><div class="sk sk-line" style="flex:1;height:13px;margin:0"></div><div class="sk sk-bar-track"><div class="sk" style="width:48%"></div></div><div class="sk sk-line w15" style="height:13px;margin:0;min-width:80px"></div></div><div class="sk sk-line w35" style="height:10px;margin-top:4px"></div><div class="sk-lb-metrics"><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div></div></div></div>
+        <div class="sk-lb-row"><div class="sk sk-avatar-sm"></div><div class="sk-lb-body"><div class="sk-lb-top"><div class="sk sk-line" style="flex:1;height:13px;margin:0"></div><div class="sk sk-bar-track"><div class="sk" style="width:37%"></div></div><div class="sk sk-line w15" style="height:13px;margin:0;min-width:80px"></div></div><div class="sk sk-line w30" style="height:10px;margin-top:4px"></div><div class="sk-lb-metrics"><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div></div></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="sk sk-line" style="width:170px;height:15px;margin:0"></div>
+        <div class="sk" style="width:140px;height:30px;border-radius:8px"></div>
+      </div>
+      <div class="card-body" style="display:flex;flex-direction:column;justify-content:center;gap:14px">
+        <div class="sk-comp-row"><div class="sk sk-line" style="width:70px;height:12px;margin:0;flex-shrink:0"></div><div class="sk-comp-bars"><div class="sk" style="height:70%"></div><div class="sk" style="height:50%"></div></div><div class="sk sk-line" style="width:50px;height:12px;margin:0;flex-shrink:0"></div></div>
+        <div class="sk-comp-row"><div class="sk sk-line" style="width:70px;height:12px;margin:0;flex-shrink:0"></div><div class="sk-comp-bars"><div class="sk" style="height:60%"></div><div class="sk" style="height:45%"></div></div><div class="sk sk-line" style="width:50px;height:12px;margin:0;flex-shrink:0"></div></div>
+        <div class="sk-comp-row"><div class="sk sk-line" style="width:70px;height:12px;margin:0;flex-shrink:0"></div><div class="sk-comp-bars"><div class="sk" style="height:85%"></div><div class="sk" style="height:65%"></div></div><div class="sk sk-line" style="width:50px;height:12px;margin:0;flex-shrink:0"></div></div>
+        <div class="sk-comp-row"><div class="sk sk-line" style="width:70px;height:12px;margin:0;flex-shrink:0"></div><div class="sk-comp-bars"><div class="sk" style="height:45%"></div><div class="sk" style="height:35%"></div></div><div class="sk sk-line" style="width:50px;height:12px;margin:0;flex-shrink:0"></div></div>
+        <div class="sk-comp-row"><div class="sk sk-line" style="width:70px;height:12px;margin:0;flex-shrink:0"></div><div class="sk-comp-bars"><div class="sk" style="height:55%"></div><div class="sk" style="height:40%"></div></div><div class="sk sk-line" style="width:50px;height:12px;margin:0;flex-shrink:0"></div></div>
+        <div class="sk-comp-row"><div class="sk sk-line" style="width:70px;height:12px;margin:0;flex-shrink:0"></div><div class="sk-comp-bars"><div class="sk" style="height:40%"></div><div class="sk" style="height:30%"></div></div><div class="sk sk-line" style="width:50px;height:12px;margin:0;flex-shrink:0"></div></div>
+      </div>
+    </div>
+
+    <!-- Row 2: Clients Top-10 + Client Dynamics -->
+    <div class="card">
+      <div class="card-head">
+        <div class="sk sk-line" style="width:140px;height:15px;margin:0"></div>
+        <div class="sk" style="width:140px;height:30px;border-radius:8px"></div>
+      </div>
+      <div class="card-body">
+        <div class="sk-lb-row"><div class="sk sk-square"></div><div class="sk-lb-body"><div class="sk-lb-top"><div class="sk sk-line" style="flex:1;height:13px;margin:0"></div><div class="sk sk-bar-track"><div class="sk" style="width:90%"></div></div><div class="sk sk-line w15" style="height:13px;margin:0;min-width:80px"></div></div><div class="sk sk-line w40" style="height:10px;margin-top:4px"></div><div class="sk-lb-metrics"><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div></div></div></div>
+        <div class="sk-lb-row"><div class="sk sk-square"></div><div class="sk-lb-body"><div class="sk-lb-top"><div class="sk sk-line" style="flex:1;height:13px;margin:0"></div><div class="sk sk-bar-track"><div class="sk" style="width:72%"></div></div><div class="sk sk-line w15" style="height:13px;margin:0;min-width:80px"></div></div><div class="sk sk-line w35" style="height:10px;margin-top:4px"></div><div class="sk-lb-metrics"><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div></div></div></div>
+        <div class="sk-lb-row"><div class="sk sk-square"></div><div class="sk-lb-body"><div class="sk-lb-top"><div class="sk sk-line" style="flex:1;height:13px;margin:0"></div><div class="sk sk-bar-track"><div class="sk" style="width:58%"></div></div><div class="sk sk-line w15" style="height:13px;margin:0;min-width:80px"></div></div><div class="sk sk-line w30" style="height:10px;margin-top:4px"></div><div class="sk-lb-metrics"><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div></div></div></div>
+        <div class="sk-lb-row"><div class="sk sk-square"></div><div class="sk-lb-body"><div class="sk-lb-top"><div class="sk sk-line" style="flex:1;height:13px;margin:0"></div><div class="sk sk-bar-track"><div class="sk" style="width:40%"></div></div><div class="sk sk-line w15" style="height:13px;margin:0;min-width:80px"></div></div><div class="sk sk-line w25" style="height:10px;margin-top:4px"></div><div class="sk-lb-metrics"><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div></div></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="sk sk-line" style="width:150px;height:15px;margin:0"></div>
+        <div class="sk" style="width:140px;height:30px;border-radius:8px"></div>
+      </div>
+      <div class="card-body" style="display:flex;flex-direction:column;justify-content:center;gap:6px">
+        <div class="sk sk-line w15" style="height:9px;margin:0 0 4px"></div>
+        <div class="sk-dyn-row"><div class="sk sk-line w20" style="height:11px;margin:0;min-width:70px"></div><div class="sk-dyn-track"><div class="sk" style="left:50%;width:30%"></div></div><div class="sk sk-line w10" style="height:11px;margin:0;min-width:36px"></div></div>
+        <div class="sk-dyn-row"><div class="sk sk-line w20" style="height:11px;margin:0;min-width:70px"></div><div class="sk-dyn-track"><div class="sk" style="left:50%;width:22%"></div></div><div class="sk sk-line w10" style="height:11px;margin:0;min-width:36px"></div></div>
+        <div class="sk-dyn-row"><div class="sk sk-line w20" style="height:11px;margin:0;min-width:70px"></div><div class="sk-dyn-track"><div class="sk" style="left:50%;width:18%"></div></div><div class="sk sk-line w10" style="height:11px;margin:0;min-width:36px"></div></div>
+        <div class="sk sk-line w15" style="height:9px;margin:8px 0 4px"></div>
+        <div class="sk-dyn-row"><div class="sk sk-line w20" style="height:11px;margin:0;min-width:70px"></div><div class="sk-dyn-track"><div class="sk" style="right:50%;width:25%"></div></div><div class="sk sk-line w10" style="height:11px;margin:0;min-width:36px"></div></div>
+        <div class="sk-dyn-row"><div class="sk sk-line w20" style="height:11px;margin:0;min-width:70px"></div><div class="sk-dyn-track"><div class="sk" style="right:50%;width:15%"></div></div><div class="sk sk-line w10" style="height:11px;margin:0;min-width:36px"></div></div>
+      </div>
+    </div>
+
+    <!-- Row 3: Time Series + Categories -->
+    <div class="card">
+      <div class="card-head">
+        <div class="sk sk-line" style="width:160px;height:15px;margin:0"></div>
+        <div class="sk" style="width:180px;height:30px;border-radius:8px"></div>
+      </div>
+      <div class="card-body" style="display:flex;flex-direction:column">
+        <div class="sk-chart-area">
+          <div class="sk" style="height:25%"></div><div class="sk" style="height:40%"></div><div class="sk" style="height:55%"></div><div class="sk" style="height:35%"></div><div class="sk" style="height:60%"></div><div class="sk" style="height:75%"></div><div class="sk" style="height:50%"></div><div class="sk" style="height:85%"></div><div class="sk" style="height:65%"></div><div class="sk" style="height:90%"></div><div class="sk" style="height:70%"></div><div class="sk" style="height:80%"></div><div class="sk" style="height:55%"></div><div class="sk" style="height:95%"></div><div class="sk" style="height:75%"></div><div class="sk" style="height:60%"></div><div class="sk" style="height:70%"></div><div class="sk" style="height:45%"></div><div class="sk" style="height:80%"></div><div class="sk" style="height:65%"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="sk sk-line" style="width:175px;height:15px;margin:0"></div>
+        <div class="sk" style="width:120px;height:30px;border-radius:8px"></div>
+      </div>
+      <div class="card-body" style="display:flex;flex-direction:column">
+        <div class="sk-donut-wrap">
+          <div class="sk-donut"></div>
+          <div class="sk-donut-legend">
+            <div class="sk-donut-legend-row"><div class="sk sk-donut-legend-dot"></div><div class="sk sk-line w60" style="height:11px;margin:0"></div><div class="sk sk-line w15" style="height:11px;margin:0;margin-left:auto"></div></div>
+            <div class="sk-donut-legend-row"><div class="sk sk-donut-legend-dot"></div><div class="sk sk-line w50" style="height:11px;margin:0"></div><div class="sk sk-line w15" style="height:11px;margin:0;margin-left:auto"></div></div>
+            <div class="sk-donut-legend-row"><div class="sk sk-donut-legend-dot"></div><div class="sk sk-line w55" style="height:11px;margin:0"></div><div class="sk sk-line w15" style="height:11px;margin:0;margin-left:auto"></div></div>
+            <div class="sk-donut-legend-row"><div class="sk sk-donut-legend-dot"></div><div class="sk sk-line w40" style="height:11px;margin:0"></div><div class="sk sk-line w15" style="height:11px;margin:0;margin-left:auto"></div></div>
+            <div class="sk-donut-legend-row"><div class="sk sk-donut-legend-dot"></div><div class="sk sk-line w45" style="height:11px;margin:0"></div><div class="sk sk-line w15" style="height:11px;margin:0;margin-left:auto"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 4: Top Products + Recent Sales -->
+    <div class="card">
+      <div class="card-head">
+        <div class="sk sk-line" style="width:175px;height:15px;margin:0"></div>
+        <div class="sk" style="width:180px;height:30px;border-radius:8px"></div>
+      </div>
+      <div class="card-body">
+        <div class="sk-tp-row"><div class="sk-tp-line1"><div class="sk sk-dot"></div><div class="sk sk-line" style="flex:1;height:13px;margin:0;max-width:120px"></div><div class="sk sk-bar-track"><div class="sk" style="width:88%"></div></div><div class="sk sk-line w10" style="height:13px;margin:0;min-width:60px"></div></div><div class="sk sk-line w35" style="height:10px;margin:3px 0 0 34px"></div><div class="sk-tp-l2"><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div></div></div>
+        <div class="sk-tp-row"><div class="sk-tp-line1"><div class="sk sk-dot"></div><div class="sk sk-line" style="flex:1;height:13px;margin:0;max-width:100px"></div><div class="sk sk-bar-track"><div class="sk" style="width:65%"></div></div><div class="sk sk-line w10" style="height:13px;margin:0;min-width:60px"></div></div><div class="sk sk-line w30" style="height:10px;margin:3px 0 0 34px"></div><div class="sk-tp-l2"><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div></div></div>
+        <div class="sk-tp-row"><div class="sk-tp-line1"><div class="sk sk-dot"></div><div class="sk sk-line" style="flex:1;height:13px;margin:0;max-width:80px"></div><div class="sk sk-bar-track"><div class="sk" style="width:48%"></div></div><div class="sk sk-line w10" style="height:13px;margin:0;min-width:60px"></div></div><div class="sk sk-line w25" style="height:10px;margin:3px 0 0 34px"></div><div class="sk-tp-l2"><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="sk sk-line" style="width:140px;height:15px;margin:0"></div>
+      </div>
+      <div class="card-body">
+        <div class="sk-sale-item"><div class="sk-sale-head"><div class="sk sk-line" style="width:80px;height:13px;margin:0"></div><div class="sk sk-line" style="width:50px;height:11px;margin:0"></div><div class="sk sk-line" style="width:40px;height:11px;margin:0"></div><div class="sk sk-sale-badge"></div></div><div class="sk sk-line w60" style="height:11px;margin:4px 0 0"></div></div>
+        <div class="sk-sale-item"><div class="sk-sale-head"><div class="sk sk-line" style="width:70px;height:13px;margin:0"></div><div class="sk sk-line" style="width:55px;height:11px;margin:0"></div><div class="sk sk-line" style="width:45px;height:11px;margin:0"></div><div class="sk sk-sale-badge"></div></div><div class="sk sk-line w50" style="height:11px;margin:4px 0 0"></div></div>
+        <div class="sk-sale-item"><div class="sk-sale-head"><div class="sk sk-line" style="width:90px;height:13px;margin:0"></div><div class="sk sk-line" style="width:45px;height:11px;margin:0"></div><div class="sk sk-line" style="width:38px;height:11px;margin:0"></div><div class="sk sk-sale-badge"></div></div><div class="sk sk-line w55" style="height:11px;margin:4px 0 0"></div></div>
+        <div class="sk-sale-item"><div class="sk-sale-head"><div class="sk sk-line" style="width:75px;height:13px;margin:0"></div><div class="sk sk-line" style="width:60px;height:11px;margin:0"></div><div class="sk sk-line" style="width:42px;height:11px;margin:0"></div><div class="sk sk-sale-badge"></div></div><div class="sk sk-line w45" style="height:11px;margin:4px 0 0"></div></div>
+        <div class="sk-sale-item"><div class="sk-sale-head"><div class="sk sk-line" style="width:85px;height:13px;margin:0"></div><div class="sk sk-line" style="width:48px;height:11px;margin:0"></div><div class="sk sk-line" style="width:35px;height:11px;margin:0"></div><div class="sk sk-sale-badge"></div></div><div class="sk sk-line w50" style="height:11px;margin:4px 0 0"></div></div>
+      </div>
+    </div>
+
+    <!-- Row 5: Returns + Cancellations (card-sm, height 450px) -->
+    <div class="card sm">
+      <div class="card-head">
+        <div class="sk sk-line" style="width:80px;height:15px;margin:0"></div>
+      </div>
+      <div class="card-body">
+        <div class="sk-loss-top"><div class="sk sk-line" style="width:80px;height:24px;margin:0"></div><div class="sk sk-line" style="width:50px;height:14px;margin:0"></div></div>
+        <div class="sk sk-line w25" style="height:11px;margin-bottom:4px"></div>
+        <div class="sk-loss-spark"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>
+        <div class="sk sk-line w20" style="height:9px;margin:10px 0 6px"></div>
+        <div class="sk-loss-row"><div class="sk sk-line" style="width:70px;height:12px;margin:0"></div><div class="sk sk-loss-bar"></div><div class="sk sk-line w15" style="height:12px;margin:0;min-width:60px"></div><div class="sk sk-line w10" style="height:10px;margin:0;min-width:40px"></div></div>
+        <div class="sk-loss-row"><div class="sk sk-line" style="width:60px;height:12px;margin:0"></div><div class="sk sk-loss-bar"></div><div class="sk sk-line w15" style="height:12px;margin:0;min-width:60px"></div><div class="sk sk-line w10" style="height:10px;margin:0;min-width:40px"></div></div>
+        <div class="sk-loss-row"><div class="sk sk-line" style="width:55px;height:12px;margin:0"></div><div class="sk sk-loss-bar"></div><div class="sk sk-line w15" style="height:12px;margin:0;min-width:60px"></div><div class="sk sk-line w10" style="height:10px;margin:0;min-width:40px"></div></div>
+      </div>
+    </div>
+
+    <div class="card sm">
+      <div class="card-head">
+        <div class="sk sk-line" style="width:70px;height:15px;margin:0"></div>
+      </div>
+      <div class="card-body">
+        <div class="sk-loss-top"><div class="sk sk-line" style="width:80px;height:24px;margin:0"></div><div class="sk sk-line" style="width:50px;height:14px;margin:0"></div></div>
+        <div class="sk sk-line w25" style="height:11px;margin-bottom:4px"></div>
+        <div class="sk-loss-spark"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>
+        <div class="sk sk-line w20" style="height:9px;margin:10px 0 6px"></div>
+        <div class="sk-loss-row"><div class="sk sk-line" style="width:65px;height:12px;margin:0"></div><div class="sk sk-loss-bar"></div><div class="sk sk-line w15" style="height:12px;margin:0;min-width:60px"></div><div class="sk sk-line w10" style="height:10px;margin:0;min-width:40px"></div></div>
+        <div class="sk-loss-row"><div class="sk sk-line" style="width:55px;height:12px;margin:0"></div><div class="sk sk-loss-bar"></div><div class="sk sk-line w15" style="height:12px;margin:0;min-width:60px"></div><div class="sk sk-line w10" style="height:10px;margin:0;min-width:40px"></div></div>
+        <div class="sk-loss-row"><div class="sk sk-line" style="width:50px;height:12px;margin:0"></div><div class="sk sk-loss-bar"></div><div class="sk sk-line w15" style="height:12px;margin:0;min-width:60px"></div><div class="sk sk-line w10" style="height:10px;margin:0;min-width:40px"></div></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============ STATE 2: Loading (смена периода) ============ -->
+<div class="state-page" id="state-1">
+  <div class="state-label">Состояние: Loading при смене периода — загруженный дашборд + уведомление</div>
+  <div class="toast">
+    <div class="toast-icon loading"><div class="toast-spinner"></div></div>
+    <span>Обновление данных…</span>
+  </div>
+  <iframe class="dashboard-frame" src="dashboard.html" title="Дашборд — загруженные данные"></iframe>
+</div>
+
+<!-- ============ STATE 3: API Error ============ -->
+<div class="state-page" id="state-2">
+  <div class="toast" style="background:#991b1b">
+    <div class="toast-icon error">!</div>
+    <span>Не удалось загрузить данные</span>
+    <button class="toast-btn" onclick="alert('Повтор запроса…')">Обновить</button>
+  </div>
+  <div class="state-label">Состояние: Ошибка API — вариант A: initial loading не завершён, показан skeleton + уведомление об ошибке</div>
+  <div class="header">Sales Performance Dashboard</div>
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <div class="seg-control">
+        <button class="seg-btn active">7 дней</button>
+        <button class="seg-btn">30 дней</button>
+        <button class="seg-btn">Этот месяц</button>
+      </div>
+      <div class="period-label">17 сент 2026 — 23 сент 2026 · 7 дней</div>
+    </div>
+    <div class="toolbar-right">
+      <div class="seg-control">
+        <button class="seg-btn">Крупный</button>
+        <button class="seg-btn">Средний</button>
+        <button class="seg-btn">Малый</button>
+      </div>
+    </div>
+  </div>
+
+<!-- Skeleton dashboard — 12-col grid, matches real .dashboard -->
+  <div class="dashboard-grid">
+
+    <!-- Row 0: 6 KPI cards (each span 2, height 170px) -->
+    <div class="kpi-card">
+      <div class="sk sk-line w40" style="height:10px"></div>
+      <div class="sk sk-line w60" style="height:22px;margin-top:8px"></div>
+      <div class="sk sk-line w30" style="height:12px;margin-top:4px"></div>
+      <div class="sk" style="margin-top:auto;height:44px;border-radius:6px"></div>
+    </div>
+    <div class="kpi-card">
+      <div class="sk sk-line w40" style="height:10px"></div>
+      <div class="sk sk-line w60" style="height:22px;margin-top:8px"></div>
+      <div class="sk sk-line w30" style="height:12px;margin-top:4px"></div>
+      <div class="sk" style="margin-top:auto;height:44px;border-radius:6px"></div>
+    </div>
+    <div class="kpi-card">
+      <div class="sk sk-line w40" style="height:10px"></div>
+      <div class="sk sk-line w60" style="height:22px;margin-top:8px"></div>
+      <div class="sk sk-line w30" style="height:12px;margin-top:4px"></div>
+      <div class="sk" style="margin-top:auto;height:44px;border-radius:6px"></div>
+    </div>
+    <div class="kpi-card">
+      <div class="sk sk-line w40" style="height:10px"></div>
+      <div class="sk sk-line w60" style="height:22px;margin-top:8px"></div>
+      <div class="sk sk-line w30" style="height:12px;margin-top:4px"></div>
+      <div class="sk" style="margin-top:auto;height:44px;border-radius:6px"></div>
+    </div>
+    <div class="kpi-card">
+      <div class="sk sk-line w40" style="height:10px"></div>
+      <div class="sk sk-line w60" style="height:22px;margin-top:8px"></div>
+      <div class="sk sk-line w30" style="height:12px;margin-top:4px"></div>
+      <div class="sk" style="margin-top:auto;height:44px;border-radius:6px"></div>
+    </div>
+    <div class="kpi-card">
+      <div class="sk sk-line w40" style="height:10px"></div>
+      <div style="display:flex;gap:10px;margin-top:6px;align-items:flex-start">
+        <div class="sk sk-avatar-sm" style="width:36px;height:36px"></div>
+        <div style="flex:1">
+          <div class="sk sk-line w50" style="height:13px"></div>
+          <div class="sk sk-line w70" style="height:10px;margin-top:4px"></div>
+          <div class="sk sk-line w40" style="height:10px;margin-top:4px"></div>
+        </div>
+      </div>
+      <div class="sk" style="margin-top:auto;height:44px;border-radius:6px"></div>
+    </div>
+
+    <!-- Row 1: Leaderboard (span 6) + Comparison (span 6) -->
+    <div class="card">
+      <div class="card-head">
+        <div class="sk sk-line" style="width:160px;height:15px;margin:0"></div>
+        <div class="sk" style="width:140px;height:30px;border-radius:8px"></div>
+      </div>
+      <div class="card-body">
+        <div class="sk-lb-row"><div class="sk sk-avatar-sm"></div><div class="sk-lb-body"><div class="sk-lb-top"><div class="sk sk-line" style="flex:1;height:13px;margin:0"></div><div class="sk sk-bar-track"><div class="sk" style="width:85%"></div></div><div class="sk sk-line w15" style="height:13px;margin:0;min-width:80px"></div></div><div class="sk sk-line w45" style="height:10px;margin-top:4px"></div><div class="sk-lb-metrics"><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div></div></div></div>
+        <div class="sk-lb-row"><div class="sk sk-avatar-sm"></div><div class="sk-lb-body"><div class="sk-lb-top"><div class="sk sk-line" style="flex:1;height:13px;margin:0"></div><div class="sk sk-bar-track"><div class="sk" style="width:64%"></div></div><div class="sk sk-line w15" style="height:13px;margin:0;min-width:80px"></div></div><div class="sk sk-line w40" style="height:10px;margin-top:4px"></div><div class="sk-lb-metrics"><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div></div></div></div>
+        <div class="sk-lb-row"><div class="sk sk-avatar-sm"></div><div class="sk-lb-body"><div class="sk-lb-top"><div class="sk sk-line" style="flex:1;height:13px;margin:0"></div><div class="sk sk-bar-track"><div class="sk" style="width:48%"></div></div><div class="sk sk-line w15" style="height:13px;margin:0;min-width:80px"></div></div><div class="sk sk-line w35" style="height:10px;margin-top:4px"></div><div class="sk-lb-metrics"><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div></div></div></div>
+        <div class="sk-lb-row"><div class="sk sk-avatar-sm"></div><div class="sk-lb-body"><div class="sk-lb-top"><div class="sk sk-line" style="flex:1;height:13px;margin:0"></div><div class="sk sk-bar-track"><div class="sk" style="width:37%"></div></div><div class="sk sk-line w15" style="height:13px;margin:0;min-width:80px"></div></div><div class="sk sk-line w30" style="height:10px;margin-top:4px"></div><div class="sk-lb-metrics"><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div></div></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="sk sk-line" style="width:170px;height:15px;margin:0"></div>
+        <div class="sk" style="width:140px;height:30px;border-radius:8px"></div>
+      </div>
+      <div class="card-body" style="display:flex;flex-direction:column;justify-content:center;gap:14px">
+        <div class="sk-comp-row"><div class="sk sk-line" style="width:70px;height:12px;margin:0;flex-shrink:0"></div><div class="sk-comp-bars"><div class="sk" style="height:70%"></div><div class="sk" style="height:50%"></div></div><div class="sk sk-line" style="width:50px;height:12px;margin:0;flex-shrink:0"></div></div>
+        <div class="sk-comp-row"><div class="sk sk-line" style="width:70px;height:12px;margin:0;flex-shrink:0"></div><div class="sk-comp-bars"><div class="sk" style="height:60%"></div><div class="sk" style="height:45%"></div></div><div class="sk sk-line" style="width:50px;height:12px;margin:0;flex-shrink:0"></div></div>
+        <div class="sk-comp-row"><div class="sk sk-line" style="width:70px;height:12px;margin:0;flex-shrink:0"></div><div class="sk-comp-bars"><div class="sk" style="height:85%"></div><div class="sk" style="height:65%"></div></div><div class="sk sk-line" style="width:50px;height:12px;margin:0;flex-shrink:0"></div></div>
+        <div class="sk-comp-row"><div class="sk sk-line" style="width:70px;height:12px;margin:0;flex-shrink:0"></div><div class="sk-comp-bars"><div class="sk" style="height:45%"></div><div class="sk" style="height:35%"></div></div><div class="sk sk-line" style="width:50px;height:12px;margin:0;flex-shrink:0"></div></div>
+        <div class="sk-comp-row"><div class="sk sk-line" style="width:70px;height:12px;margin:0;flex-shrink:0"></div><div class="sk-comp-bars"><div class="sk" style="height:55%"></div><div class="sk" style="height:40%"></div></div><div class="sk sk-line" style="width:50px;height:12px;margin:0;flex-shrink:0"></div></div>
+        <div class="sk-comp-row"><div class="sk sk-line" style="width:70px;height:12px;margin:0;flex-shrink:0"></div><div class="sk-comp-bars"><div class="sk" style="height:40%"></div><div class="sk" style="height:30%"></div></div><div class="sk sk-line" style="width:50px;height:12px;margin:0;flex-shrink:0"></div></div>
+      </div>
+    </div>
+
+    <!-- Row 2: Clients Top-10 + Client Dynamics -->
+    <div class="card">
+      <div class="card-head">
+        <div class="sk sk-line" style="width:140px;height:15px;margin:0"></div>
+        <div class="sk" style="width:140px;height:30px;border-radius:8px"></div>
+      </div>
+      <div class="card-body">
+        <div class="sk-lb-row"><div class="sk sk-square"></div><div class="sk-lb-body"><div class="sk-lb-top"><div class="sk sk-line" style="flex:1;height:13px;margin:0"></div><div class="sk sk-bar-track"><div class="sk" style="width:90%"></div></div><div class="sk sk-line w15" style="height:13px;margin:0;min-width:80px"></div></div><div class="sk sk-line w40" style="height:10px;margin-top:4px"></div><div class="sk-lb-metrics"><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div></div></div></div>
+        <div class="sk-lb-row"><div class="sk sk-square"></div><div class="sk-lb-body"><div class="sk-lb-top"><div class="sk sk-line" style="flex:1;height:13px;margin:0"></div><div class="sk sk-bar-track"><div class="sk" style="width:72%"></div></div><div class="sk sk-line w15" style="height:13px;margin:0;min-width:80px"></div></div><div class="sk sk-line w35" style="height:10px;margin-top:4px"></div><div class="sk-lb-metrics"><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div></div></div></div>
+        <div class="sk-lb-row"><div class="sk sk-square"></div><div class="sk-lb-body"><div class="sk-lb-top"><div class="sk sk-line" style="flex:1;height:13px;margin:0"></div><div class="sk sk-bar-track"><div class="sk" style="width:58%"></div></div><div class="sk sk-line w15" style="height:13px;margin:0;min-width:80px"></div></div><div class="sk sk-line w30" style="height:10px;margin-top:4px"></div><div class="sk-lb-metrics"><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div></div></div></div>
+        <div class="sk-lb-row"><div class="sk sk-square"></div><div class="sk-lb-body"><div class="sk-lb-top"><div class="sk sk-line" style="flex:1;height:13px;margin:0"></div><div class="sk sk-bar-track"><div class="sk" style="width:40%"></div></div><div class="sk sk-line w15" style="height:13px;margin:0;min-width:80px"></div></div><div class="sk sk-line w25" style="height:10px;margin-top:4px"></div><div class="sk-lb-metrics"><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-lb-metric"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div></div></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="sk sk-line" style="width:150px;height:15px;margin:0"></div>
+        <div class="sk" style="width:140px;height:30px;border-radius:8px"></div>
+      </div>
+      <div class="card-body" style="display:flex;flex-direction:column;justify-content:center;gap:6px">
+        <div class="sk sk-line w15" style="height:9px;margin:0 0 4px"></div>
+        <div class="sk-dyn-row"><div class="sk sk-line w20" style="height:11px;margin:0;min-width:70px"></div><div class="sk-dyn-track"><div class="sk" style="left:50%;width:30%"></div></div><div class="sk sk-line w10" style="height:11px;margin:0;min-width:36px"></div></div>
+        <div class="sk-dyn-row"><div class="sk sk-line w20" style="height:11px;margin:0;min-width:70px"></div><div class="sk-dyn-track"><div class="sk" style="left:50%;width:22%"></div></div><div class="sk sk-line w10" style="height:11px;margin:0;min-width:36px"></div></div>
+        <div class="sk-dyn-row"><div class="sk sk-line w20" style="height:11px;margin:0;min-width:70px"></div><div class="sk-dyn-track"><div class="sk" style="left:50%;width:18%"></div></div><div class="sk sk-line w10" style="height:11px;margin:0;min-width:36px"></div></div>
+        <div class="sk sk-line w15" style="height:9px;margin:8px 0 4px"></div>
+        <div class="sk-dyn-row"><div class="sk sk-line w20" style="height:11px;margin:0;min-width:70px"></div><div class="sk-dyn-track"><div class="sk" style="right:50%;width:25%"></div></div><div class="sk sk-line w10" style="height:11px;margin:0;min-width:36px"></div></div>
+        <div class="sk-dyn-row"><div class="sk sk-line w20" style="height:11px;margin:0;min-width:70px"></div><div class="sk-dyn-track"><div class="sk" style="right:50%;width:15%"></div></div><div class="sk sk-line w10" style="height:11px;margin:0;min-width:36px"></div></div>
+      </div>
+    </div>
+
+    <!-- Row 3: Time Series + Categories -->
+    <div class="card">
+      <div class="card-head">
+        <div class="sk sk-line" style="width:160px;height:15px;margin:0"></div>
+        <div class="sk" style="width:180px;height:30px;border-radius:8px"></div>
+      </div>
+      <div class="card-body" style="display:flex;flex-direction:column">
+        <div class="sk-chart-area">
+          <div class="sk" style="height:25%"></div><div class="sk" style="height:40%"></div><div class="sk" style="height:55%"></div><div class="sk" style="height:35%"></div><div class="sk" style="height:60%"></div><div class="sk" style="height:75%"></div><div class="sk" style="height:50%"></div><div class="sk" style="height:85%"></div><div class="sk" style="height:65%"></div><div class="sk" style="height:90%"></div><div class="sk" style="height:70%"></div><div class="sk" style="height:80%"></div><div class="sk" style="height:55%"></div><div class="sk" style="height:95%"></div><div class="sk" style="height:75%"></div><div class="sk" style="height:60%"></div><div class="sk" style="height:70%"></div><div class="sk" style="height:45%"></div><div class="sk" style="height:80%"></div><div class="sk" style="height:65%"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="sk sk-line" style="width:175px;height:15px;margin:0"></div>
+        <div class="sk" style="width:120px;height:30px;border-radius:8px"></div>
+      </div>
+      <div class="card-body" style="display:flex;flex-direction:column">
+        <div class="sk-donut-wrap">
+          <div class="sk-donut"></div>
+          <div class="sk-donut-legend">
+            <div class="sk-donut-legend-row"><div class="sk sk-donut-legend-dot"></div><div class="sk sk-line w60" style="height:11px;margin:0"></div><div class="sk sk-line w15" style="height:11px;margin:0;margin-left:auto"></div></div>
+            <div class="sk-donut-legend-row"><div class="sk sk-donut-legend-dot"></div><div class="sk sk-line w50" style="height:11px;margin:0"></div><div class="sk sk-line w15" style="height:11px;margin:0;margin-left:auto"></div></div>
+            <div class="sk-donut-legend-row"><div class="sk sk-donut-legend-dot"></div><div class="sk sk-line w55" style="height:11px;margin:0"></div><div class="sk sk-line w15" style="height:11px;margin:0;margin-left:auto"></div></div>
+            <div class="sk-donut-legend-row"><div class="sk sk-donut-legend-dot"></div><div class="sk sk-line w40" style="height:11px;margin:0"></div><div class="sk sk-line w15" style="height:11px;margin:0;margin-left:auto"></div></div>
+            <div class="sk-donut-legend-row"><div class="sk sk-donut-legend-dot"></div><div class="sk sk-line w45" style="height:11px;margin:0"></div><div class="sk sk-line w15" style="height:11px;margin:0;margin-left:auto"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Row 4: Top Products + Recent Sales -->
+    <div class="card">
+      <div class="card-head">
+        <div class="sk sk-line" style="width:175px;height:15px;margin:0"></div>
+        <div class="sk" style="width:180px;height:30px;border-radius:8px"></div>
+      </div>
+      <div class="card-body">
+        <div class="sk-tp-row"><div class="sk-tp-line1"><div class="sk sk-dot"></div><div class="sk sk-line" style="flex:1;height:13px;margin:0;max-width:120px"></div><div class="sk sk-bar-track"><div class="sk" style="width:88%"></div></div><div class="sk sk-line w10" style="height:13px;margin:0;min-width:60px"></div></div><div class="sk sk-line w35" style="height:10px;margin:3px 0 0 34px"></div><div class="sk-tp-l2"><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div></div></div>
+        <div class="sk-tp-row"><div class="sk-tp-line1"><div class="sk sk-dot"></div><div class="sk sk-line" style="flex:1;height:13px;margin:0;max-width:100px"></div><div class="sk sk-bar-track"><div class="sk" style="width:65%"></div></div><div class="sk sk-line w10" style="height:13px;margin:0;min-width:60px"></div></div><div class="sk sk-line w30" style="height:10px;margin:3px 0 0 34px"></div><div class="sk-tp-l2"><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div></div></div>
+        <div class="sk-tp-row"><div class="sk-tp-line1"><div class="sk sk-dot"></div><div class="sk sk-line" style="flex:1;height:13px;margin:0;max-width:80px"></div><div class="sk sk-bar-track"><div class="sk" style="width:48%"></div></div><div class="sk sk-line w10" style="height:13px;margin:0;min-width:60px"></div></div><div class="sk sk-line w25" style="height:10px;margin:3px 0 0 34px"></div><div class="sk-tp-l2"><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div><div class="sk-tp-l2-cell"><div class="sk sk-line w60" style="height:8px;margin:0"></div><div class="sk sk-line w80" style="height:11px;margin:0"></div></div></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <div class="sk sk-line" style="width:140px;height:15px;margin:0"></div>
+      </div>
+      <div class="card-body">
+        <div class="sk-sale-item"><div class="sk-sale-head"><div class="sk sk-line" style="width:80px;height:13px;margin:0"></div><div class="sk sk-line" style="width:50px;height:11px;margin:0"></div><div class="sk sk-line" style="width:40px;height:11px;margin:0"></div><div class="sk sk-sale-badge"></div></div><div class="sk sk-line w60" style="height:11px;margin:4px 0 0"></div></div>
+        <div class="sk-sale-item"><div class="sk-sale-head"><div class="sk sk-line" style="width:70px;height:13px;margin:0"></div><div class="sk sk-line" style="width:55px;height:11px;margin:0"></div><div class="sk sk-line" style="width:45px;height:11px;margin:0"></div><div class="sk sk-sale-badge"></div></div><div class="sk sk-line w50" style="height:11px;margin:4px 0 0"></div></div>
+        <div class="sk-sale-item"><div class="sk-sale-head"><div class="sk sk-line" style="width:90px;height:13px;margin:0"></div><div class="sk sk-line" style="width:45px;height:11px;margin:0"></div><div class="sk sk-line" style="width:38px;height:11px;margin:0"></div><div class="sk sk-sale-badge"></div></div><div class="sk sk-line w55" style="height:11px;margin:4px 0 0"></div></div>
+        <div class="sk-sale-item"><div class="sk-sale-head"><div class="sk sk-line" style="width:75px;height:13px;margin:0"></div><div class="sk sk-line" style="width:60px;height:11px;margin:0"></div><div class="sk sk-line" style="width:42px;height:11px;margin:0"></div><div class="sk sk-sale-badge"></div></div><div class="sk sk-line w45" style="height:11px;margin:4px 0 0"></div></div>
+        <div class="sk-sale-item"><div class="sk-sale-head"><div class="sk sk-line" style="width:85px;height:13px;margin:0"></div><div class="sk sk-line" style="width:48px;height:11px;margin:0"></div><div class="sk sk-line" style="width:35px;height:11px;margin:0"></div><div class="sk sk-sale-badge"></div></div><div class="sk sk-line w50" style="height:11px;margin:4px 0 0"></div></div>
+      </div>
+    </div>
+
+    <!-- Row 5: Returns + Cancellations (card-sm, height 450px) -->
+    <div class="card sm">
+      <div class="card-head">
+        <div class="sk sk-line" style="width:80px;height:15px;margin:0"></div>
+      </div>
+      <div class="card-body">
+        <div class="sk-loss-top"><div class="sk sk-line" style="width:80px;height:24px;margin:0"></div><div class="sk sk-line" style="width:50px;height:14px;margin:0"></div></div>
+        <div class="sk sk-line w25" style="height:11px;margin-bottom:4px"></div>
+        <div class="sk-loss-spark"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>
+        <div class="sk sk-line w20" style="height:9px;margin:10px 0 6px"></div>
+        <div class="sk-loss-row"><div class="sk sk-line" style="width:70px;height:12px;margin:0"></div><div class="sk sk-loss-bar"></div><div class="sk sk-line w15" style="height:12px;margin:0;min-width:60px"></div><div class="sk sk-line w10" style="height:10px;margin:0;min-width:40px"></div></div>
+        <div class="sk-loss-row"><div class="sk sk-line" style="width:60px;height:12px;margin:0"></div><div class="sk sk-loss-bar"></div><div class="sk sk-line w15" style="height:12px;margin:0;min-width:60px"></div><div class="sk sk-line w10" style="height:10px;margin:0;min-width:40px"></div></div>
+        <div class="sk-loss-row"><div class="sk sk-line" style="width:55px;height:12px;margin:0"></div><div class="sk sk-loss-bar"></div><div class="sk sk-line w15" style="height:12px;margin:0;min-width:60px"></div><div class="sk sk-line w10" style="height:10px;margin:0;min-width:40px"></div></div>
+      </div>
+    </div>
+
+    <div class="card sm">
+      <div class="card-head">
+        <div class="sk sk-line" style="width:70px;height:15px;margin:0"></div>
+      </div>
+      <div class="card-body">
+        <div class="sk-loss-top"><div class="sk sk-line" style="width:80px;height:24px;margin:0"></div><div class="sk sk-line" style="width:50px;height:14px;margin:0"></div></div>
+        <div class="sk sk-line w25" style="height:11px;margin-bottom:4px"></div>
+        <div class="sk-loss-spark"><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div><div class="sk"></div></div>
+        <div class="sk sk-line w20" style="height:9px;margin:10px 0 6px"></div>
+        <div class="sk-loss-row"><div class="sk sk-line" style="width:65px;height:12px;margin:0"></div><div class="sk sk-loss-bar"></div><div class="sk sk-line w15" style="height:12px;margin:0;min-width:60px"></div><div class="sk sk-line w10" style="height:10px;margin:0;min-width:40px"></div></div>
+        <div class="sk-loss-row"><div class="sk sk-line" style="width:55px;height:12px;margin:0"></div><div class="sk sk-loss-bar"></div><div class="sk sk-line w15" style="height:12px;margin:0;min-width:60px"></div><div class="sk sk-line w10" style="height:10px;margin:0;min-width:40px"></div></div>
+        <div class="sk-loss-row"><div class="sk sk-line" style="width:50px;height:12px;margin:0"></div><div class="sk sk-loss-bar"></div><div class="sk sk-line w15" style="height:12px;margin:0;min-width:60px"></div><div class="sk sk-line w10" style="height:10px;margin:0;min-width:40px"></div></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ============ STATE 3B: Error API — данные уже были (последнее состояние) ============ -->
+<div class="state-page" id="state-2b">
+  <div class="state-label">Состояние: Ошибка API — вариант B: данные уже загружены, показано последнее состояние + уведомление</div>
+  <div class="toast" style="background:#991b1b">
+    <div class="toast-icon error">!</div>
+    <span>Не удалось обновить данные. Показаны данные за предыдущий период</span>
+    <button class="toast-btn" onclick="alert('Повтор запроса…')">Обновить</button>
+  </div>
+  <iframe class="dashboard-frame" src="dashboard.html" title="Дашборд — последнее загруженное состояние"></iframe>
+</div>
+
+
+
+<!-- ============ STATE 4: Пустой период ============ -->
+<div class="state-page" id="state-3">
+  <div class="state-label">Состояние: Пустой период без продаж — блоки с продажами показывают «данных нет», Возвраты и Отмены — свои заглушки</div>
+  <div class="header">Sales Performance Dashboard</div>
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <div class="seg-control">
+        <button class="seg-btn">Сегодня</button>
+        <button class="seg-btn">7 дней</button>
+        <button class="seg-btn">30 дней</button>
+        <button class="seg-btn">Этот месяц</button>
+        <button class="seg-btn active">Прошлый месяц</button>
+      </div>
+      <div class="period-label">1 авг 2026 — 31 авг 2026 · Прошлый месяц</div>
+    </div>
+    <div class="toolbar-right">
+      <div class="seg-control">
+        <button class="seg-btn">Крупный</button>
+        <button class="seg-btn">Средний</button>
+        <button class="seg-btn active">Малый</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPI: all show — and "данных нет" -->
+  <div class="kpi-row">
+    <div class="kpi-card">
+      <div class="kpi-label">Выручка</div>
+      <div class="kpi-value" style="color:var(--text-tertiary)">—</div>
+      <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">данных нет</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Валовая прибыль</div>
+      <div class="kpi-value" style="color:var(--text-tertiary)">—</div>
+      <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">данных нет</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Маржинальность</div>
+      <div class="kpi-value" style="color:var(--text-tertiary)">—</div>
+      <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">данных нет</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Количество продаж</div>
+      <div class="kpi-value" style="color:var(--text-tertiary)">—</div>
+      <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">данных нет</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Средний чек</div>
+      <div class="kpi-value" style="color:var(--text-tertiary)">—</div>
+      <div style="font-size:11px;color:var(--text-tertiary);margin-top:2px">данных нет</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Лучший менеджер</div>
+      <div style="font-size:13px;color:var(--text-tertiary);margin-top:8px">данных нет</div>
+    </div>
+  </div>
+
+  <!-- Row 1: Рейтинг + Сравнение — both empty -->
+  <div class="card-grid">
+    <div class="card std">
+      <div class="card-header">
+        <div class="card-title">Рейтинг менеджеров</div>
+        <div class="tab-buttons"><button class="tab-btn active">Валовая прибыль</button><button class="tab-btn">Средний чек</button></div>
+      </div>
+      <div class="empty-state">
+        <div class="empty-icon"><svg><use href="#icon-empty"/></svg></div>
+        <div class="empty-title">За выбранный период данных нет</div>
+        <div class="empty-subtitle">Попробуйте изменить период или сегмент</div>
+      </div>
+    </div>
+    <div class="card std">
+      <div class="card-header">
+        <div class="card-title">Сравнение менеджеров</div>
+        <div class="tab-buttons"><button class="tab-btn active">Валовая прибыль</button><button class="tab-btn">Средний чек</button></div>
+      </div>
+      <div class="empty-state">
+        <div class="empty-icon"><svg><use href="#icon-empty"/></svg></div>
+        <div class="empty-title">За выбранный период данных нет</div>
+        <div class="empty-subtitle">Попробуйте изменить период или сегмент</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 2: Клиенты + Динамика — both empty -->
+  <div class="card-grid">
+    <div class="card std">
+      <div class="card-header">
+        <div class="card-title">Клиенты — Топ-10</div>
+        <div class="tab-buttons"><button class="tab-btn active">Валовая прибыль</button><button class="tab-btn">Средний чек</button></div>
+      </div>
+      <div class="empty-state">
+        <div class="empty-icon"><svg><use href="#icon-empty"/></svg></div>
+        <div class="empty-title">За выбранный период данных нет</div>
+        <div class="empty-subtitle">Попробуйте изменить период или сегмент</div>
+      </div>
+    </div>
+    <div class="card std">
+      <div class="card-header">
+        <div class="card-title">Динамика клиентов</div>
+        <div class="tab-buttons"><button class="tab-btn active">Валовая прибыль</button><button class="tab-btn">Средний чек</button></div>
+      </div>
+      <div class="empty-state">
+        <div class="empty-icon"><svg><use href="#icon-empty"/></svg></div>
+        <div class="empty-title">За выбранный период данных нет</div>
+        <div class="empty-subtitle">Попробуйте изменить период или сегмент</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 3: Динамика во времени + Категории — both empty -->
+  <div class="card-grid">
+    <div class="card std">
+      <div class="card-header">
+        <div class="card-title">Динамика во времени</div>
+        <div class="tab-buttons"><button class="tab-btn active">Выручка</button><button class="tab-btn">Валовая прибыль</button><button class="tab-btn">Кол-во продаж</button></div>
+      </div>
+      <div class="empty-state">
+        <div class="empty-icon"><svg><use href="#icon-empty"/></svg></div>
+        <div class="empty-title">За выбранный период данных нет</div>
+        <div class="empty-subtitle">Попробуйте изменить период или сегмент</div>
+      </div>
+    </div>
+    <div class="card std">
+      <div class="card-header">
+        <div class="card-title">Продажи по категориям</div>
+        <div class="tab-buttons"><button class="tab-btn active">Выручка</button><button class="tab-btn">Валовая прибыль</button></div>
+      </div>
+      <div class="empty-state">
+        <div class="empty-icon"><svg><use href="#icon-empty"/></svg></div>
+        <div class="empty-title">За выбранный период данных нет</div>
+        <div class="empty-subtitle">Попробуйте изменить период или сегмент</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 4: Лучшие продукты + Последние продажи — both empty -->
+  <div class="card-grid">
+    <div class="card std">
+      <div class="card-header">
+        <div class="card-title">Лучшие продукты — Топ-10</div>
+        <div class="tab-buttons"><button class="tab-btn active">Выручка</button><button class="tab-btn">Валовая прибыль</button><button class="tab-btn">Продано шт</button></div>
+      </div>
+      <div class="empty-state">
+        <div class="empty-icon"><svg><use href="#icon-empty"/></svg></div>
+        <div class="empty-title">За выбранный период данных нет</div>
+        <div class="empty-subtitle">Попробуйте изменить период или сегмент</div>
+      </div>
+    </div>
+    <div class="card std">
+      <div class="card-header"><div class="card-title">Последние продажи</div></div>
+      <div class="empty-state">
+        <div class="empty-icon"><svg><use href="#icon-empty"/></svg></div>
+        <div class="empty-title">За выбранный период данных нет</div>
+        <div class="empty-subtitle">Попробуйте изменить период или сегмент</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 5: Возвраты + Отмены — specific empty messages -->
+  <div class="card-grid">
+    <div class="card small">
+      <div class="card-header"><div class="card-title">Возвраты</div></div>
+      <div class="empty-state">
+        <div class="empty-icon"><svg><use href="#icon-empty"/></svg></div>
+        <div class="empty-title">Возвратов нет</div>
+        <div class="empty-subtitle">За выбранный период возвратов не зафиксировано</div>
+      </div>
+    </div>
+    <div class="card small">
+      <div class="card-header"><div class="card-title">Отмены</div></div>
+      <div class="empty-state">
+        <div class="empty-icon"><svg><use href="#icon-empty"/></svg></div>
+        <div class="empty-title">Отмен нет</div>
+        <div class="empty-subtitle">За выбранный период отмен не зафиксировано</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============ STATE 5: Нет данных по отдельному блоку ============ -->
+<div class="state-page" id="state-4">
+  <div class="state-label">Состояние: Нет данных по отдельному блоку — часть блоков заполнена, несколько показывают заглушку</div>
+  <div class="header">Sales Performance Dashboard</div>
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <div class="seg-control">
+        <button class="seg-btn">Сегодня</button>
+        <button class="seg-btn active">7 дней</button>
+        <button class="seg-btn">30 дней</button>
+        <button class="seg-btn">Этот месяц</button>
+        <button class="seg-btn">Прошлый месяц</button>
+      </div>
+      <div class="period-label">17 сент 2026 — 23 сент 2026 · 7 дней</div>
+    </div>
+    <div class="toolbar-right">
+      <div class="seg-control">
+        <button class="seg-btn">Крупный</button>
+        <button class="seg-btn">Средний</button>
+        <button class="seg-btn active">Малый</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- KPI: filled (data exists for this segment) -->
+  <div class="kpi-row">
+    <div class="kpi-card">
+      <div class="kpi-label">Выручка</div>
+      <div class="kpi-value">8,4 млн ₽</div>
+      <div class="kpi-delta up">▲ +12,4%</div>
+      <div class="kpi-spark"><span style="height:40%"></span><span style="height:60%"></span><span style="height:45%"></span><span style="height:70%"></span><span style="height:55%"></span><span style="height:85%"></span><span style="height:65%"></span></div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Валовая прибыль</div>
+      <div class="kpi-value">2,8 млн ₽</div>
+      <div class="kpi-delta up">▲ +8,7%</div>
+      <div class="kpi-spark"><span style="height:50%"></span><span style="height:45%"></span><span style="height:60%"></span><span style="height:55%"></span><span style="height:70%"></span><span style="height:65%"></span><span style="height:80%"></span></div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Маржинальность</div>
+      <div class="kpi-value">33,9%</div>
+      <div class="kpi-delta up">▲ +1,2 п.п.</div>
+      <div class="kpi-spark"><span style="height:60%"></span><span style="height:55%"></span><span style="height:65%"></span><span style="height:60%"></span><span style="height:70%"></span><span style="height:65%"></span><span style="height:75%"></span></div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Количество продаж</div>
+      <div class="kpi-value">186</div>
+      <div class="kpi-delta up">▲ +5,1%</div>
+      <div class="kpi-spark"><span style="height:40%"></span><span style="height:50%"></span><span style="height:45%"></span><span style="height:60%"></span><span style="height:55%"></span><span style="height:70%"></span><span style="height:65%"></span></div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Средний чек</div>
+      <div class="kpi-value">45,2 тыс ₽</div>
+      <div class="kpi-delta down">▼ −3,1%</div>
+      <div class="kpi-spark"><span style="height:80%"></span><span style="height:75%"></span><span style="height:70%"></span><span style="height:65%"></span><span style="height:60%"></span><span style="height:55%"></span><span style="height:50%"></span></div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Лучший менеджер</div>
+      <div style="display:flex;gap:10px;margin-top:4px;align-items:center">
+        <div style="width:28px;height:28px;border-radius:50%;background:#10b981;color:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600">ПП</div>
+        <div>
+          <div style="font-weight:600;font-size:13px">Петрова П.</div>
+          <div style="font-size:11px;color:var(--text-tertiary)">ВП: 1,2 млн ₽ · 28 прод.</div>
+        </div>
+      </div>
+      <div class="kpi-delta up" style="margin-top:4px">▲ +15%</div>
+    </div>
+  </div>
+
+  <!-- Row 1: Рейтинг заполнен, Сравнение — нет данных -->
+  <div class="card-grid">
+    <div class="card std">
+      <div class="card-head">
+        <div class="card-title">Рейтинг менеджеров</div>
+        <div class="seg-control"><button class="seg-btn active">Валовая прибыль</button><button class="seg-btn">Средний чек</button></div>
+      </div>
+      <div class="card-body">
+        <div class="lb-list">
+          <div class="lb-row">
+            <div class="lb-pos-dot"><div class="avatar-sm" style="background:#10b981">ПП</div></div>
+            <div class="lb-body">
+              <div class="lb-name">Петрова П.</div>
+              <div class="lb-nums"><div class="lb-bar-wrap"><div class="lb-bar" style="width:90%;background:#3b82f6"></div></div><div class="lb-val">1,2 млн ₽</div></div>
+              <div class="lb-line2">Команда Alpha · 28 продаж</div>
+              <div class="lb-contribution">42,9% от общей ВП</div>
+              <div class="lb-l2">
+                <div class="lb-l2-item"><span class="lb-l2-label">Выручка</span><span class="lb-l2-val">2,8 млн ₽</span><span class="lb-l2-delta up">▲ +12,0%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Валовая прибыль</span><span class="lb-l2-val">1,2 млн ₽</span><span class="lb-l2-delta up">▲ +9,1%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Маржинальность</span><span class="lb-l2-val">42,9%</span><span class="lb-l2-delta up">▲ +1,2 п.п.</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Средний чек</span><span class="lb-l2-val">100,0 тыс ₽</span><span class="lb-l2-delta up">▲ +2,0%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Отмены</span><span class="lb-l2-val">0,0%</span><span class="lb-l2-delta flat">—</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="lb-row">
+            <div class="lb-pos-dot"><div class="avatar-sm" style="background:#6366f1">ИИ</div></div>
+            <div class="lb-body">
+              <div class="lb-name">Иванов И.</div>
+              <div class="lb-nums"><div class="lb-bar-wrap"><div class="lb-bar" style="width:65%;background:#3b82f6"></div></div><div class="lb-val">840 тыс ₽</div></div>
+              <div class="lb-line2">Команда Alpha · 24 продажи</div>
+              <div class="lb-contribution">30,0% от общей ВП</div>
+              <div class="lb-l2">
+                <div class="lb-l2-item"><span class="lb-l2-label">Выручка</span><span class="lb-l2-val">2,1 млн ₽</span><span class="lb-l2-delta up">▲ +7,4%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Валовая прибыль</span><span class="lb-l2-val">840 тыс ₽</span><span class="lb-l2-delta up">▲ +5,2%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Маржинальность</span><span class="lb-l2-val">40,0%</span><span class="lb-l2-delta up">▲ +0,6 п.п.</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Средний чек</span><span class="lb-l2-val">87,5 тыс ₽</span><span class="lb-l2-delta down">▼ −1,1%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Отмены</span><span class="lb-l2-val">4,2%</span><span class="lb-l2-delta flat">—</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="lb-row">
+            <div class="lb-pos-dot"><div class="avatar-sm" style="background:#a78bfa">СК</div></div>
+            <div class="lb-body">
+              <div class="lb-name">Сидоров С.</div>
+              <div class="lb-nums"><div class="lb-bar-wrap"><div class="lb-bar" style="width:40%;background:#3b82f6"></div></div><div class="lb-val">520 тыс ₽</div></div>
+              <div class="lb-line2">Команда Beta · 18 продаж</div>
+              <div class="lb-contribution">18,6% от общей ВП</div>
+              <div class="lb-l2">
+                <div class="lb-l2-item"><span class="lb-l2-label">Выручка</span><span class="lb-l2-val">1,4 млн ₽</span><span class="lb-l2-delta up">▲ +3,8%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Валовая прибыль</span><span class="lb-l2-val">520 тыс ₽</span><span class="lb-l2-delta up">▲ +2,4%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Маржинальность</span><span class="lb-l2-val">37,1%</span><span class="lb-l2-delta up">▲ +0,9 п.п.</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Средний чек</span><span class="lb-l2-val">77,8 тыс ₽</span><span class="lb-l2-delta down">▼ −2,3%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Отмены</span><span class="lb-l2-val">0,0%</span><span class="lb-l2-delta flat">—</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="lb-row">
+            <div class="lb-pos-dot"><div class="avatar-sm" style="background:#7dd3fc">КК</div></div>
+            <div class="lb-body">
+              <div class="lb-name">Кузнецов К.</div>
+              <div class="lb-nums"><div class="lb-bar-wrap"><div class="lb-bar" style="width:15%;background:#3b82f6"></div></div><div class="lb-val">180 тыс ₽</div></div>
+              <div class="lb-line2">Команда Gamma · 9 продаж</div>
+              <div class="lb-contribution">6,4% от общей ВП</div>
+              <div class="lb-l2">
+                <div class="lb-l2-item"><span class="lb-l2-label">Выручка</span><span class="lb-l2-val">610 тыс ₽</span><span class="lb-l2-delta down">▼ −1,6%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Валовая прибыль</span><span class="lb-l2-val">180 тыс ₽</span><span class="lb-l2-delta down">▼ −0,8%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Маржинальность</span><span class="lb-l2-val">29,5%</span><span class="lb-l2-delta down">▼ −0,4 п.п.</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Средний чек</span><span class="lb-l2-val">67,8 тыс ₽</span><span class="lb-l2-delta up">▲ +1,2%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Отмены</span><span class="lb-l2-val">10,0%</span><span class="lb-l2-delta flat">—</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card std">
+      <div class="card-head">
+        <div class="card-title">Сравнение менеджеров</div>
+        <div class="seg-control"><button class="seg-btn active">Валовая прибыль</button><button class="seg-btn">Средний чек</button></div>
+      </div>
+      <div class="empty-state">
+        <div class="empty-icon"><svg><use href="#icon-empty"/></svg></div>
+        <div class="empty-title">За выбранный период данных нет</div>
+        <div class="empty-subtitle">Недостаточно менеджеров с продажами в выбранном сегменте</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 2: Клиенты заполнен, Динамика — нет данных -->
+  <div class="card-grid">
+    <div class="card std">
+      <div class="card-head">
+        <div class="card-title">Клиенты — Топ-10</div>
+        <div class="seg-control"><button class="seg-btn active">Валовая прибыль</button><button class="seg-btn">Средний чек</button></div>
+      </div>
+      <div class="card-body">
+        <div class="lb-list">
+          <div class="lb-row">
+            <div class="lb-pos-dot"><div class="lb-cmark">1</div></div>
+            <div class="lb-body">
+              <div class="lb-name">ООО «Агроторг»</div>
+              <div class="lb-nums"><div class="lb-bar-wrap"><div class="lb-bar" style="width:85%;background:#3b82f6"></div></div><div class="lb-val">620 тыс ₽</div></div>
+              <div class="lb-line2">клиент с 2022 · 18 заказов</div>
+              <div class="lb-contribution">22,1% от общей ВП</div>
+              <div class="lb-l2">
+                <div class="lb-l2-item"><span class="lb-l2-label">Выручка</span><span class="lb-l2-val">2,0 млн ₽</span><span class="lb-l2-delta up">▲ +12,0%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Валовая прибыль</span><span class="lb-l2-val">620 тыс ₽</span><span class="lb-l2-delta up">▲ +9,4%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Маржинальность</span><span class="lb-l2-val">31,0%</span><span class="lb-l2-delta down">▼ −0,3 п.п.</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Средний чек</span><span class="lb-l2-val">111,1 тыс ₽</span><span class="lb-l2-delta up">▲ +4,2%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Возвраты</span><span class="lb-l2-val">5,3%</span><span class="lb-l2-delta flat">—</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Отмены</span><span class="lb-l2-val">5,0%</span><span class="lb-l2-delta flat">—</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="lb-row">
+            <div class="lb-pos-dot"><div class="lb-cmark">2</div></div>
+            <div class="lb-body">
+              <div class="lb-name">ИП Соколов</div>
+              <div class="lb-nums"><div class="lb-bar-wrap"><div class="lb-bar" style="width:70%;background:#3b82f6"></div></div><div class="lb-val">510 тыс ₽</div></div>
+              <div class="lb-line2">клиент с 2026 · 15 заказов</div>
+              <div class="lb-contribution">18,2% от общей ВП</div>
+              <div class="lb-l2">
+                <div class="lb-l2-item"><span class="lb-l2-label">Выручка</span><span class="lb-l2-val">750 тыс ₽</span><span class="lb-l2-delta down">▼ −16,7%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Валовая прибыль</span><span class="lb-l2-val">510 тыс ₽</span><span class="lb-l2-delta down">▼ −8,9%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Маржинальность</span><span class="lb-l2-val">68,0%</span><span class="lb-l2-delta up">▲ +5,0 п.п.</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Средний чек</span><span class="lb-l2-val">50,0 тыс ₽</span><span class="lb-l2-delta down">▼ −3,4%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Возвраты</span><span class="lb-l2-val">6,3%</span><span class="lb-l2-delta flat">—</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Отмены</span><span class="lb-l2-val">5,9%</span><span class="lb-l2-delta flat">—</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="lb-row">
+            <div class="lb-pos-dot"><div class="lb-cmark">3</div></div>
+            <div class="lb-body">
+              <div class="lb-name">ООО «Торгсервис»</div>
+              <div class="lb-nums"><div class="lb-bar-wrap"><div class="lb-bar" style="width:55%;background:#3b82f6"></div></div><div class="lb-val">400 тыс ₽</div></div>
+              <div class="lb-line2">клиент с 2023 · 19 заказов</div>
+              <div class="lb-contribution">14,3% от общей ВП</div>
+              <div class="lb-l2">
+                <div class="lb-l2-item"><span class="lb-l2-label">Выручка</span><span class="lb-l2-val">1,6 млн ₽</span><span class="lb-l2-delta up">▲ +4,1%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Валовая прибыль</span><span class="lb-l2-val">400 тыс ₽</span><span class="lb-l2-delta up">▲ +3,3%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Маржинальность</span><span class="lb-l2-val">25,0%</span><span class="lb-l2-delta down">▼ −0,2 п.п.</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Средний чек</span><span class="lb-l2-val">84,2 тыс ₽</span><span class="lb-l2-delta up">▲ +1,8%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Возвраты</span><span class="lb-l2-val">нет</span><span class="lb-l2-delta flat">—</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Отмены</span><span class="lb-l2-val">нет</span><span class="lb-l2-delta flat">—</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="lb-row">
+            <div class="lb-pos-dot"><div class="lb-cmark">4</div></div>
+            <div class="lb-body">
+              <div class="lb-name">ООО «Восток»</div>
+              <div class="lb-nums"><div class="lb-bar-wrap"><div class="lb-bar" style="width:40%;background:#3b82f6"></div></div><div class="lb-val">290 тыс ₽</div></div>
+              <div class="lb-line2">клиент с 2024 · 11 заказов</div>
+              <div class="lb-contribution">10,4% от общей ВП</div>
+              <div class="lb-l2">
+                <div class="lb-l2-item"><span class="lb-l2-label">Выручка</span><span class="lb-l2-val">980 тыс ₽</span><span class="lb-l2-delta up">▲ +2,2%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Валовая прибыль</span><span class="lb-l2-val">290 тыс ₽</span><span class="lb-l2-delta up">▲ +1,5%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Маржинальность</span><span class="lb-l2-val">29,6%</span><span class="lb-l2-delta down">▼ −0,1 п.п.</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Средний чек</span><span class="lb-l2-val">89,1 тыс ₽</span><span class="lb-l2-delta up">▲ +0,7%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Возвраты</span><span class="lb-l2-val">8,3%</span><span class="lb-l2-delta flat">—</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Отмены</span><span class="lb-l2-val">нет</span><span class="lb-l2-delta flat">—</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="lb-row">
+            <div class="lb-pos-dot"><div class="lb-cmark">5</div></div>
+            <div class="lb-body">
+              <div class="lb-name">ООО «Меркурий»</div>
+              <div class="lb-nums"><div class="lb-bar-wrap"><div class="lb-bar" style="width:30%;background:#3b82f6"></div></div><div class="lb-val">210 тыс ₽</div></div>
+              <div class="lb-line2">клиент с 2025 · 9 заказов</div>
+              <div class="lb-contribution">7,5% от общей ВП</div>
+              <div class="lb-l2">
+                <div class="lb-l2-item"><span class="lb-l2-label">Выручка</span><span class="lb-l2-val">690 тыс ₽</span><span class="lb-l2-delta up">▲ +6,0%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Валовая прибыль</span><span class="lb-l2-val">210 тыс ₽</span><span class="lb-l2-delta up">▲ +4,4%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Маржинальность</span><span class="lb-l2-val">30,4%</span><span class="lb-l2-delta down">▼ −0,5 п.п.</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Средний чек</span><span class="lb-l2-val">76,7 тыс ₽</span><span class="lb-l2-delta up">▲ +2,9%</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Возвраты</span><span class="lb-l2-val">нет</span><span class="lb-l2-delta flat">—</span></div>
+                <div class="lb-l2-item"><span class="lb-l2-label">Отмены</span><span class="lb-l2-val">нет</span><span class="lb-l2-delta flat">—</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card std">
+      <div class="card-head">
+        <div class="card-title">Динамика клиентов</div>
+        <div class="seg-control"><button class="seg-btn active">Валовая прибыль</button><button class="seg-btn">Средний чек</button></div>
+      </div>
+      <div class="empty-state">
+        <div class="empty-icon"><svg><use href="#icon-empty"/></svg></div>
+        <div class="empty-title">За выбранный период данных нет</div>
+        <div class="empty-subtitle">Недостаточно данных для сравнения с предыдущим периодом</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 3: Динамика во времени заполнен, Категории — нет данных -->
+  <div class="card-grid">
+    <div class="card std">
+      <div class="card-head">
+        <div class="card-title">Динамика во времени</div>
+        <div class="seg-control"><button class="seg-btn active">Выручка</button><button class="seg-btn">Валовая прибыль</button><button class="seg-btn">Кол-во продаж</button></div>
+      </div>
+      <div class="card-body">
+        <svg class="trend-chart" viewBox="0 0 600 200" preserveAspectRatio="none">
+          <polygon points="0,84.6 66.7,67.9 133.3,76.9 200,48.6 266.7,55 333.3,35.7 400,42.1 466.7,22.9 533.3,29.3 600,10 600,200 0,200" fill="rgba(59,130,246,0.10)"/>
+          <polyline points="0,84.6 66.7,67.9 133.3,76.9 200,48.6 266.7,55 333.3,35.7 400,42.1 466.7,22.9 533.3,29.3 600,10" fill="none" stroke="#3b82f6" stroke-width="2" vector-effect="non-scaling-stroke"/>
+        </svg>
+      </div>
+    </div>
+    <div class="card std">
+      <div class="card-head">
+        <div class="card-title">Продажи по категориям</div>
+        <div class="seg-control"><button class="seg-btn active">Выручка</button><button class="seg-btn">Валовая прибыль</button></div>
+      </div>
+      <div class="empty-state">
+        <div class="empty-icon"><svg><use href="#icon-empty"/></svg></div>
+        <div class="empty-title">За выбранный период данных нет</div>
+        <div class="empty-subtitle">В выбранном сегменте нет продаж по категориям</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 4: Лучшие продукты заполнен, Последние продажи — нет данных -->
+  <div class="card-grid">
+    <div class="card std">
+      <div class="card-head">
+        <div class="card-title">Лучшие продукты — Топ-10</div>
+        <div class="seg-control"><button class="seg-btn active">Выручка</button><button class="seg-btn">Валовая прибыль</button><button class="seg-btn">Продано шт</button></div>
+      </div>
+      <div class="card-body">
+        <div class="tp-list">
+          <div class="tp-item">
+            <div class="tp-line1">
+              <div class="tp-pos-dot"><div class="tp-dot" style="background:#3b82f6"></div></div>
+              <div class="tp-title">Mini 4 Pro Fly More Combo</div>
+              <div class="tp-bar-wrap"><div class="tp-bar" style="width:85%;background:#3b82f6"></div></div>
+              <div class="tp-value">1,8 млн ₽</div>
+            </div>
+            <div class="tp-line2">MINI4P-FMC-01 · Дроны</div>
+            <div class="tp-l2">
+              <div class="tp-l2-cell"><span class="tp-l2-label">Выручка</span><span class="tp-l2-val">1,9 млн ₽</span><span class="tp-delta up">▲ +21,0%</span></div>
+              <div class="tp-l2-cell"><span class="tp-l2-label">ВП</span><span class="tp-l2-val pos">620 тыс ₽</span><span class="tp-delta up">▲ +19,2%</span></div>
+              <div class="tp-l2-cell"><span class="tp-l2-label">Продано</span><span class="tp-l2-val">96</span><span class="tp-delta up">▲ +9,1%</span></div>
+              <div class="tp-l2-cell"><span class="tp-l2-label">Маржинал.</span><span class="tp-l2-val">32,6%</span><span class="tp-delta down">▼ −0,5 п.п.</span></div>
+              <div class="tp-l2-cell"><span class="tp-l2-label">Возвраты</span><span class="tp-l2-val">12,5%</span><span class="tp-delta bad">▲ +8,0 п.п.</span></div>
+            </div>
+          </div>
+          <div class="tp-item">
+            <div class="tp-line1">
+              <div class="tp-pos-dot"><div class="tp-dot" style="background:#10b981"></div></div>
+              <div class="tp-title">Osmo Pocket 3</div>
+              <div class="tp-bar-wrap"><div class="tp-bar" style="width:60%;background:#3b82f6"></div></div>
+              <div class="tp-value">1,2 млн ₽</div>
+            </div>
+            <div class="tp-line2">OSMO-P3-01 · Камеры</div>
+            <div class="tp-l2">
+              <div class="tp-l2-cell"><span class="tp-l2-label">Выручка</span><span class="tp-l2-val">1,3 млн ₽</span><span class="tp-delta up">▲ +9,0%</span></div>
+              <div class="tp-l2-cell"><span class="tp-l2-label">ВП</span><span class="tp-l2-val pos">430 тыс ₽</span><span class="tp-delta up">▲ +7,5%</span></div>
+              <div class="tp-l2-cell"><span class="tp-l2-label">Продано</span><span class="tp-l2-val">186</span><span class="tp-delta up">▲ +6,3%</span></div>
+              <div class="tp-l2-cell"><span class="tp-l2-label">Маржинал.</span><span class="tp-l2-val">33,1%</span><span class="tp-delta down">▼ −0,4 п.п.</span></div>
+              <div class="tp-l2-cell"><span class="tp-l2-label">Возвраты</span><span class="tp-l2-val">6,5%</span><span class="tp-delta bad">▲ +3,0 п.п.</span></div>
+            </div>
+          </div>
+          <div class="tp-item">
+            <div class="tp-line1">
+              <div class="tp-pos-dot"><div class="tp-dot" style="background:#3b82f6"></div></div>
+              <div class="tp-title">Air 3</div>
+              <div class="tp-bar-wrap"><div class="tp-bar" style="width:45%;background:#3b82f6"></div></div>
+              <div class="tp-value">920 тыс ₽</div>
+            </div>
+            <div class="tp-line2">AIR3-STD-01 · Дроны</div>
+            <div class="tp-l2">
+              <div class="tp-l2-cell"><span class="tp-l2-label">Выручка</span><span class="tp-l2-val">1,1 млн ₽</span><span class="tp-delta down">▼ −3,0%</span></div>
+              <div class="tp-l2-cell"><span class="tp-l2-label">ВП</span><span class="tp-l2-val pos">350 тыс ₽</span><span class="tp-delta down">▼ −4,1%</span></div>
+              <div class="tp-l2-cell"><span class="tp-l2-label">Продано</span><span class="tp-l2-val">40</span><span class="tp-delta down">▼ −4,8%</span></div>
+              <div class="tp-l2-cell"><span class="tp-l2-label">Маржинал.</span><span class="tp-l2-val">31,8%</span><span class="tp-delta down">▼ −0,4 п.п.</span></div>
+              <div class="tp-l2-cell"><span class="tp-l2-label">Возвраты</span><span class="tp-l2-val muted">нет</span><span class="tp-delta flat">—</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card std">
+      <div class="card-head"><div class="card-title">Последние продажи</div></div>
+      <div class="empty-state">
+        <div class="empty-icon"><svg><use href="#icon-empty"/></svg></div>
+        <div class="empty-title">За выбранный период данных нет</div>
+        <div class="empty-subtitle">В выбранном сегменте нет сделок за период</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Row 5: Возвраты + Отмены — both filled (losses can exist without sales) -->
+  <div class="card-grid">
+    <div class="card small">
+      <div class="card-head"><div class="card-title">Возвраты</div></div>
+      <div class="card-body">
+        <div class="loss-wrap">
+          <div class="loss-top">
+            <div class="loss-big">340 тыс ₽</div>
+            <div class="loss-rate"><span class="lbl">доля</span>4,1% <span class="loss-delta worse">▲ +0,3 п.п.</span></div>
+          </div>
+          <svg class="loss-spark" viewBox="0 0 200 30" preserveAspectRatio="none">
+            <polyline points="0,19.7 22.2,13.4 44.4,16.6 66.7,10.3 88.9,13.4 111.1,7.2 133.3,10.3 155.6,4.1 177.8,7.2 200,1" fill="none" stroke="#ef4444" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+          </svg>
+          <div class="loss-top-h">Топ товаров по сумме возвратов</div>
+          <div class="loss-list">
+            <div class="loss-row"><span class="loss-rank">#1</span><span class="loss-obj">Mini 4 Pro <span class="sub">· Дроны</span></span><span class="loss-bar-wrap"><span class="loss-bar" style="width:100%"></span></span><span class="loss-sum">180 тыс ₽</span><span class="loss-share">52,9%</span></div>
+            <div class="loss-row"><span class="loss-rank">#2</span><span class="loss-obj">Osmo Pocket 3 <span class="sub">· Камеры</span></span><span class="loss-bar-wrap"><span class="loss-bar" style="width:66.7%"></span></span><span class="loss-sum">120 тыс ₽</span><span class="loss-share">35,3%</span></div>
+            <div class="loss-row tail"><span class="loss-rank"></span><span class="loss-obj">Остальные 2</span><span class="loss-bar-wrap"></span><span class="loss-sum">40 тыс ₽</span><span class="loss-share">11,8%</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card small">
+      <div class="card-head"><div class="card-title">Отмены</div></div>
+      <div class="card-body">
+        <div class="loss-wrap">
+          <div class="loss-top">
+            <div class="loss-big">120 тыс ₽</div>
+            <div class="loss-rate"><span class="lbl">доля</span>2,8% <span class="loss-delta better">▼ −0,5 п.п.</span></div>
+          </div>
+          <svg class="loss-spark" viewBox="0 0 200 30" preserveAspectRatio="none">
+            <polyline points="0,17.8 22.2,12.2 44.4,17.8 66.7,6.6 88.9,12.2 111.1,6.6 133.3,12.2 155.6,1 177.8,6.6 200,1" fill="none" stroke="#f59e0b" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+          </svg>
+          <div class="loss-top-h">Топ менеджеров по сумме отмен</div>
+          <div class="loss-list">
+            <div class="loss-row"><span class="loss-rank">#1</span><span class="loss-obj">Петрова П. <span class="sub">· Alpha</span></span><span class="loss-bar-wrap"><span class="loss-bar" style="width:100%"></span></span><span class="loss-sum">60 тыс ₽</span><span class="loss-share">50,0%</span></div>
+            <div class="loss-row"><span class="loss-rank">#2</span><span class="loss-obj">Иванов И. <span class="sub">· Alpha</span></span><span class="loss-bar-wrap"><span class="loss-bar" style="width:70%"></span></span><span class="loss-sum">42 тыс ₽</span><span class="loss-share">35,0%</span></div>
+            <div class="loss-row tail"><span class="loss-rank"></span><span class="loss-obj">Остальные 3</span><span class="loss-bar-wrap"></span><span class="loss-sum">18 тыс ₽</span><span class="loss-share">15,0%</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function showState(n) {
+  document.querySelectorAll('.state-page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.state-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('state-' + n).classList.add('active');
+  // Highlight the button that triggered this state (match by onclick text,
+  // so numeric and string states like '2b' are handled uniformly)
+  var call = (typeof n === 'string') ? "showState('" + n + "')" : 'showState(' + n + ')';
+  document.querySelectorAll('.state-btn').forEach(function(b) {
+    if (b.getAttribute('onclick') === call) b.classList.add('active');
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,1708 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Sales Performance Dashboard</title>
+<style>
+:root{
+  --bg:#f4f6f9;--surface:#fff;--border:#e0e3e8;
+  --text:#1a1d24;--text2:#6b707a;
+  --accent:#3b82f6;--success:#10b981;--danger:#ef4444;--warn:#f59e0b;
+  /* Стандартная высота карточки: все блоки одинаковы, содержимое скроллится внутри */
+  --card-h:600px;
+  --kpi-h:170px;
+  --lb-row-h:88px;
+  --gap:16px;
+  --layout-max:1200px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-width:1200px}
+
+/* ===== HEADER ===== */
+/* Header — чистая подпись без контролов и без собственного фона (см. ui.md, «Макет страницы») */
+.app-header{max-width:var(--layout-max);margin:0 auto;padding:16px 0 0;background:transparent;border:none}
+.app-header h1{font-size:1.25rem;font-weight:700}
+.app-header p{font-size:.8rem;color:var(--text2);margin-top:2px}
+
+/* ===== PERIOD TOOLBAR ===== */
+/* Отдельный бар под header. Два независимых глобальных фильтра разнесены
+   по краям: слева период («когда»), справа сегмент клиента («для кого»).
+   Контролы выровнены по верху. */
+.period-toolbar{
+  display:flex;align-items:flex-start;justify-content:space-between;gap:24px;
+  max-width:var(--layout-max);margin:0 auto;
+  padding:10px 0;border-bottom:1px solid var(--border);background:transparent;
+}
+/* Период — колонка: строка контролов, под ней подпись диапазона */
+.tb-left{display:flex;flex-direction:column;gap:8px;min-width:0}
+.tb-controls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+/* Единый вид кнопок периода и сегмента клиента: рамка, прозрачный фон,
+   у активной — голубая заливка и акцентная рамка. Ширина не меняется
+   при переключении — активное состояние отличается только цветом/фоном. */
+.pill-group{display:flex;gap:4px}
+.pill-group button{
+  padding:6px 12px;border:1px solid var(--border);background:transparent;
+  border-radius:6px;font-size:.8rem;font-weight:400;cursor:pointer;
+  color:var(--text2);transition:.15s;white-space:nowrap;
+}
+.pill-group button:hover{border-color:var(--accent)}
+.pill-group button.active{background:#eff6ff;border-color:var(--accent);color:var(--accent)}
+/* Произвольный период — та же кнопка; при активном пресете приглушена */
+.custom-period.idle>button{opacity:.45}
+/* Подпись диапазона — вторая строка под контролами периода:
+   даты (основное) · длительность (вторичное) */
+.range-label{display:flex;align-items:baseline;gap:6px;padding-left:9px;font-size:.8rem;color:var(--text2);white-space:nowrap}
+.range-label strong{color:var(--text);font-weight:600}
+.range-label .dot{color:#c9ced6}
+.range-label .dur{font-size:.72rem;color:#9ca3af}
+/* Правая группа — фильтр сегмента клиента */
+.tb-right{display:flex;align-items:flex-start;gap:10px;flex-shrink:0}
+
+/* ===== GRID ===== */
+/* 12-колоночная сетка, ограничена по ширине; карточки задают её span-классами */
+.dashboard{
+  display:grid;
+  grid-template-columns:repeat(12,1fr);
+  gap:var(--gap);
+  max-width:var(--layout-max);
+  margin:0 auto;
+  padding:var(--gap) 0 32px;
+  align-items:start;
+}
+/* ===== CARD (базовый контейнер) ===== */
+.card{
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:12px;
+  padding:16px;
+  display:flex;
+  flex-direction:column;
+  min-width:0;
+  /* Все карточки одной высоты — содержимое скроллится внутри карточки */
+  height:var(--card-h);
+}
+.card-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:12px;flex-shrink:0}
+.card-title{font-weight:600;font-size:.95rem}
+.seg{display:flex;gap:2px;background:#f1f5f9;border-radius:8px;padding:2px}
+.seg button{padding:5px 10px;border:none;background:transparent;border-radius:6px;font-size:.78rem;cursor:pointer;color:var(--text2);transition:.15s}
+.seg button.active{background:var(--surface);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+
+/* ===== СРАВНЕНИЕ МЕНЕДЖЕРОВ (grouped bar) ===== */
+/* Легенда живёт в шапке карточки вместо текстовой подписи метрик */
+.legend{display:flex;gap:20px;align-items:center;font-size:.78rem;color:var(--text2)}
+.legend .swatch{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:4px}
+/* Дельта справа от каждого столбца: зелёный рост / красный падение / серый ноль */
+.comp-delta{font-size:10px;font-weight:600}
+.comp-delta.up{fill:var(--success)}
+.comp-delta.down{fill:var(--danger)}
+.comp-delta.flat{fill:#9ca3af}
+
+/* ===== KPI ROW ===== */
+.kpi-card{grid-column:span 2;height:var(--kpi-h)}
+.kpi-label{font-size:.7rem;text-transform:uppercase;letter-spacing:.05em;color:var(--text2);margin-bottom:6px}
+.kpi-value{font-size:1.5rem;font-weight:700;line-height:1.2}
+.kpi-delta{font-size:.78rem;margin-top:4px}
+.kpi-delta.up{color:var(--success)}
+.kpi-delta.down{color:var(--danger)}
+/* Спарклайн занимает всю ширину карточки и прижат к её нижнему краю
+   (карточка — flex-колонка), толщина линии не искажается (non-scaling-stroke) */
+.spark{display:block;width:100%;height:44px;margin-top:auto;flex-shrink:0}
+.top-mgr{display:flex;align-items:center;gap:10px;margin-top:4px}
+.avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#818cf8);display:flex;align-items:center;justify-content:center;color:#fff;font-size:.8rem;font-weight:600;flex-shrink:0}
+/* Подписи «Лучший менеджер» — три строки (ВП, продажи, Δ ВП). Отдельной Δ-строки
+   раньше не было, поэтому токен --kpi-h увеличен: содержимое карточки не сжимается,
+   искровая линия остаётся стандартной высоты */
+.top-mgr-info{font-size:.85rem;font-weight:600;line-height:1.15}
+.top-mgr-sub{font-size:.72rem;color:var(--text2);line-height:1.15}
+.mgr-delta{font-size:.72rem;font-weight:600;line-height:1.15;margin-top:6px}
+.mgr-delta.up{color:var(--success)}
+.mgr-delta.down{color:var(--danger)}
+/* Отступы между подписями: имя → ВП, ВП → продажи */
+.top-mgr-info+.top-mgr-sub,.top-mgr-sub+.top-mgr-sub{margin-top:3px}
+
+/* ===== FULL-WIDTH CARD ===== */
+.card-full{grid-column:span 12}
+.card-half{grid-column:span 6}
+.card-third{grid-column:span 4}
+/* Компактный ряд (Возвраты / Отмены): высота подогнана под 10 строк топа —
+   заголовок, крупное число, sparkline и список; лишнего места внизу нет.
+   Список остаётся скроллируемым: если объектов больше десяти, добавится хвост. */
+.card-sm{height:450px}
+
+/* Отступ между контентом и скроллбаром: трек скролла уходит в правый padding
+   карточки (margin-right), а padding-right оставляет строки внутри — так
+   полоса не липнет к тексту и не перекрывает последний элемент списка */
+.card-body{flex:1;overflow-y:auto;overscroll-behavior:contain;position:relative;min-height:0;margin-right:-8px;padding-right:8px}
+.card-body-h{height:var(--card-body-h)}
+/* График растянут на всю карточку: скролла нет, SVG занимает всю область.
+   Отступ под скроллбар здесь не нужен и даже вреден — размеры SVG берутся из
+   getBoundingClientRect(), поэтому область должна совпадать с вложенностью. */
+.card-body-fit{overflow:hidden;margin-right:0;padding-right:0}
+
+/* ===== LEADERBOARD (одноколоночный список в половине ширины) ===== */
+.lb-list{display:flex;flex-direction:column}
+/* Строка рейтинга повторяет «Лучшие продукты»: левая колонка (имя + трек,
+   подпись, метрики) занимает всё место до правого блока; правый блок — value,
+   delta, contribution, каждая относительная величина на своей строке ровно
+   под значением, всё выровнено по правому краю */
+.lb-row{display:flex;align-items:flex-start;gap:10px;padding:14px 0;border-bottom:1px solid #f0f1f3;flex-shrink:0}
+.lb-row:last-child{border-bottom:none}
+.lb-row-top{display:flex;align-items:center;gap:10px}
+.lb-pos{font-weight:700;font-size:13px;color:#9ca3af;min-width:24px;text-align:center;flex-shrink:0}
+.lb-pos.top1{color:#f59e0b}.lb-pos.top2{color:#9ca3af}.lb-pos.top3{color:#b45309}
+.lb-pos-dot{display:flex;align-items:center;justify-content:center;width:24px;flex-shrink:0;align-self:flex-start}
+.avatar-sm{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:600;flex-shrink:0}
+.lb-name{flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lb-line2{margin-top:2px;font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Тело строки — grid: колонки «имя/подпись | трек | value/delta/contribution»,
+   lb-l2 на всю ширину. Аватар — слева от тела, прижат к верху строки. */
+/* Трек в 3-й колонке вплотную к значению (gap 10px), заполнение растёт
+   слева направо от левого края трека */
+/* Колонка 3 — трек + значение вместе, внутренний gap 10px между ними;
+   колонка 1 — имя/подпись, lb-l2 на всю ширину */
+.lb-body{flex:1;min-width:0;display:grid;grid-template-columns:1fr 1fr auto;column-gap:10px;row-gap:2px;align-items:center}
+.lb-body .lb-row-top{display:contents}
+.lb-body .lb-name{grid-column:1/3;grid-row:1;flex:none}
+/* Колонка 3 — трек и значение на одной строке, gap 10px между ними */
+.lb-body .lb-nums{grid-column:3;grid-row:1;display:flex;align-items:center;gap:10px}
+.lb-body .lb-bar-wrap{margin-left:0;justify-self:end}
+.lb-body .lb-val{margin-left:0}
+.lb-body .lb-line2{grid-column:1/3;grid-row:2;margin-top:0}
+.lb-body .lb-delta{grid-column:3;grid-row:2;text-align:right}
+.lb-body .lb-contribution{grid-column:3;grid-row:3;text-align:right;margin-top:0}
+.lb-body .lb-l2{grid-column:1/-1;grid-row:4;margin-left:0;margin-right:0;margin-top:8px}
+/* Клиенты: Δ строки уровня 1 убрана, её место на 2-й строке занял вклад
+   («доля от итога активной метрики»), поэтому уровень 2 поднялся на 3-ю строку */
+#cl-container .lb-contribution{grid-row:2}
+#cl-container .lb-l2{grid-row:3}
+/* Рейтинг менеджеров: Δ уровня 1 убрана (её место занял вклад), поэтому
+   уровень 2 поднялся на 3-ю строку — раскладка совпадает с карточкой клиентов */
+#lb-container .lb-contribution{grid-row:2}
+#lb-container .lb-l2{grid-row:3}
+/* Трек фиксированной ширины (90px) с серой подложкой, прижат вправо между
+   названием и значением. Заполнение растёт слева направо: 0% — пустой трек,
+   100% — полностью заполнен. */
+.lb-bar-wrap{margin-left:auto;width:90px;height:4px;background:#f3f4f6;border-radius:2px;overflow:hidden;flex-shrink:0}
+.lb-bar{height:100%;border-radius:2px;transition:width .5s ease}
+.lb-val{font-size:13px;font-weight:700;color:var(--text);min-width:80px;text-align:right}
+.lb-delta{font-size:11px;text-align:right}
+.lb-delta.up{color:var(--success)}
+.lb-delta.down{color:var(--danger)}
+.lb-delta.flat{color:#9ca3af}
+.lb-contribution{font-size:11px;color:var(--accent);text-align:right;margin-top:2px;font-weight:600}
+/* Отступ 68px = 24px позиции + 10px gap + 24px аватара + 10px gap — левый
+   край подписи и метрик совпадает с именем; справа 90px = 80px значения + 10px gap */
+/* Метрики отделены от строки тонкой линией: без неё четыре числа слипаются
+   с подписью строки и ряд читается как один текст */
+.lb-l2{
+  margin-top:10px;padding-top:8px;
+  border-top:1px solid #f0f1f3;
+  display:grid;grid-template-columns:repeat(3,1fr);gap:8px;
+}
+.lb-l2-item{display:flex;flex-direction:column;gap:2px;min-width:0}
+.lb-l2-label{font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.3px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lb-l2-val{font-size:12px;color:var(--text);font-weight:600;white-space:nowrap}
+.lb-row.zero .lb-name,.lb-row.zero .lb-val,.lb-row.zero .lb-l2-val{color:#cbd5e1}
+/* Δ поля уровня 2: стрелка + знак + один знак после запятой, U+2212 для минуса */
+.lb-l2-delta{font-size:10px;font-weight:600;white-space:nowrap}
+.lb-l2-delta.up{color:var(--success)}
+.lb-l2-delta.down{color:var(--danger)}
+.lb-l2-delta.flat{color:#9ca3af}
+/* «Плохие» метрики (возвраты, отмены): рост доли красный, падение зелёное */
+.lb-l2-delta.bad{color:var(--danger)}
+.lb-l2-delta.good{color:var(--success)}
+
+/* ===== TOP PRODUCTS (одноколоночный список в половине ширины) ===== */
+/* Структура строки — 1:1 с top-products-card.html: точка + название + бар-линия
+   + значение в одну линию; подпись и сетка метрик выровнены под названием
+   (отступ 34px = 24px точки + 10px gap, справа 90px = 80px значения + 10px gap) */
+.tp-item{padding:14px 0;border-bottom:1px solid #f0f1f3;flex-shrink:0}
+.tp-item:last-child{border-bottom:none}
+.tp-line1{display:flex;align-items:center;gap:10px}
+.tp-pos-dot{display:flex;align-items:center;justify-content:center;width:24px;flex-shrink:0}
+.tp-dot{width:10px;height:10px;border-radius:50%}
+.tp-title{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Трек фиксированной ширины (90px) с серой подложкой, прижат вправо между
+   названием и значением. Цветная часть растёт слева направо от левого края
+   трека: 0% — пустой трек, 100% — полностью заполнен. */
+.tp-bar-wrap{margin-left:auto;width:90px;height:4px;background:#f3f4f6;border-radius:2px;overflow:hidden;flex-shrink:0}
+.tp-bar{height:100%;border-radius:2px;transition:width .5s ease}
+.tp-value{font-size:13px;font-weight:700;color:var(--text);min-width:80px;text-align:right}
+.tp-line2{margin-left:34px;margin-right:90px;font-size:11px;color:var(--text2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* Уровень 2 — пять полей в ряд: четыре метрики с Δ к предыдущему периоду
+   и «Возвраты» долей (акцент по порогу + Δ доли в п.п.) */
+.tp-l2{margin-left:34px;margin-right:90px;margin-top:10px;padding-top:8px;border-top:1px solid #f0f1f3;display:grid;grid-template-columns:repeat(5,1fr);gap:8px}
+.tp-l2-cell{display:flex;flex-direction:column;gap:2px;min-width:0}
+.tp-l2-label{font-size:10px;color:#aaa;text-transform:uppercase;letter-spacing:.3px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tp-l2-val{font-size:12px;color:var(--text);font-weight:600;white-space:nowrap}
+.tp-l2-val.pos{color:var(--success)}
+.tp-l2-val.neg{color:var(--danger)}
+.tp-l2-val.warn{color:var(--danger)}
+.tp-l2-val.muted{color:#9ca3af;font-weight:500;font-style:italic}
+/* Δ метрики строки товара: стрелка + знак + %, U+2212 для минуса */
+.tp-delta{font-size:10px;font-weight:600;white-space:nowrap}
+.tp-delta.up{color:var(--success)}
+.tp-delta.down{color:var(--danger)}
+.tp-delta.flat{color:#9ca3af}
+/* Возвраты — «плохая» метрика: рост доли красный, падение зелёное */
+.tp-delta.bad{color:var(--danger)}
+.tp-delta.good{color:var(--success)}
+
+/* ===== TABLE ===== */
+.tbl{width:100%;border-collapse:collapse;font-size:.82rem}
+.tbl th{text-align:left;padding:8px 6px;border-bottom:2px solid var(--border);font-size:.68rem;text-transform:uppercase;color:var(--text2);font-weight:600}
+.tbl td{padding:8px 6px;border-bottom:1px solid #f0f1f3;vertical-align:top}
+.tbl tr:hover td{background:#f8fafc}
+.badge{padding:3px 10px;border-radius:20px;font-size:.68rem;font-weight:600;white-space:nowrap}
+/* Сокращение с расшифровкой в тултипе */
+.def-tip{cursor:help;text-decoration:underline dotted rgba(107,114,128,.5);text-underline-offset:3px}
+.badge-paid{background:#dcfce7;color:#16a34a}
+.badge-cancelled{background:#f1f2f6;color:#6b7280}
+.badge-refunded{background:#fee2e2;color:#ef4444}
+.cell-sub{font-size:.68rem;color:#9ca3af;margin-top:2px}
+.cell-reason{font-size:.68rem;color:var(--text2);margin-top:2px}
+.tbl-caption{font-size:.7rem;color:var(--text2);padding:8px 6px 0}
+/* Единица измерения — в одной строке с заголовком колонки */
+.th-unit{display:inline-block;margin-left:4px;font-weight:500;font-size:.62rem;color:#9ca3af;text-transform:none;letter-spacing:0;white-space:nowrap}
+/* ===== ПРОДАЖИ ПО КАТЕГОРИЯМ (donut + легенда-таблица) ===== */
+/* Тело карточки — flex-колонка «донат | легенда»; скроллится только легенда,
+   поэтому внешний overflow отключён */
+#cat-body{overflow:hidden}
+/* Донат вырос по высоте и занимает фиксированную долю карточки */
+.donut-wrap{flex:0 0 260px;display:flex;align-items:center;justify-content:center;min-height:0}
+.donut-seg{cursor:pointer;transition:opacity .2s}
+.donut-center-label{font-size:11px;fill:#6b707a}
+.donut-center-value{font-size:16px;font-weight:700;fill:#1a1d24}
+/* Легенда — топ-10 со скроллом внутри карточки; шапка таблицы залипает сверху,
+   внизу — затухание как маркер продолжения списка */
+.cat-legend-wrap{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;position:relative;margin-right:-8px;padding-right:8px}
+#cat-body .tbl th{position:sticky;top:0;z-index:1;background:var(--surface);text-align:right;white-space:nowrap}
+#cat-body .tbl th:first-child{text-align:left}
+#cat-body .tbl td{padding:6px;vertical-align:middle}
+#cat-body .tbl td:not(:first-child){text-align:right}
+#cat-body .tbl tr:hover td{background:#f8fafc}
+#cat-body .cat-legend-wrap .fade-bot{position:sticky;bottom:0;height:24px;margin-top:-24px}
+.cat-name{display:flex;align-items:center;gap:6px;font-weight:600;font-size:.8rem;white-space:nowrap}
+.cat-dot{width:10px;height:10px;border-radius:3px;flex-shrink:0}
+/* Значение и Δ — в одну строку, каждая в своей под-колонке: значение прижато
+   вправо (правые края совпадают во всех строках), Δ начинается сразу за ним
+   (левые края совпадают) — числа читаются вертикально, как таблица, а зазор
+   между числом и Δ минимален */
+.cell-line{display:grid;grid-template-columns:1fr 62px;gap:4px;align-items:baseline;white-space:nowrap}
+.cell-val{font-weight:600;font-size:.8rem;color:var(--text);line-height:1.15;text-align:right;font-variant-numeric:tabular-nums}
+.cell-delta{font-size:.6rem;font-weight:600;line-height:1.15;text-align:left;font-variant-numeric:tabular-nums}
+.d.up{color:var(--success)}
+.d.down{color:var(--danger)}
+.d.flat{color:#9ca3af}
+
+/* ===== RECENT SALES (список, карточка на половину ширины) ===== */
+/* Строка 1: клиент + менеджер + дата, статус прижат вправо.
+   Строка 2: количество и обе суммы — один ряд в стиле количества. */
+.sale-list{display:flex;flex-direction:column}
+.sale-item{padding:10px 0;border-bottom:1px solid #f0f1f3;flex-shrink:0}
+.sale-item:last-child{border-bottom:none}
+.sale-head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.sale-client{font-size:.86rem;font-weight:600}
+.sale-manager{font-size:.72rem;color:var(--text2)}
+.sale-manager::before{content:'·';margin-right:6px;color:var(--border)}
+.sale-date{font-size:.72rem;color:var(--text2);font-weight:500;white-space:nowrap}
+/* Статус — в конце строки 1: маркер отделяет его от данных о сделке.
+   Фиксированная ширина и центрирование — чтобы подписи разной длины
+   («Выполнена», «Возврат», «Отменена») читались как одинаковые плашки. */
+.sale-badge{margin-left:auto;align-self:center;flex-shrink:0;box-sizing:border-box;min-width:84px;text-align:center}
+/* Общая строка метаданных: количество · сумма · ВП. Единый размер и цвет,
+   как у количества; величины выделены только весом. */
+.sale-meta{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;font-size:.76rem;color:#555;line-height:1.4;margin-top:3px}
+.sale-meta .sep{color:var(--border)}
+.sale-meta .val{font-weight:600;color:var(--text)}
+
+/* Только деньги: режим «Сумма | Количество» убран, количество не является
+   предметом блока. Доля группы — единственный оценочный показатель. */
+.card-sub{font-size:.68rem;color:var(--text2);margin-top:2px}
+.loss-wrap{display:flex;flex-direction:column;height:100%;min-height:0}
+.loss-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.loss-big{font-size:1.5rem;font-weight:800;line-height:1.15}
+.loss-rate{font-size:.9rem;font-weight:700;white-space:nowrap}
+.loss-rate .lbl{font-size:.68rem;font-weight:500;color:var(--text2);margin-right:4px}
+.loss-delta{font-size:.72rem;font-weight:600;margin-left:6px}
+.loss-delta.worse{color:var(--danger)}
+.loss-delta.better{color:var(--success)}
+.loss-delta.flat{color:#9ca3af}
+.loss-spark{width:100%;height:30px;margin:6px 0 2px;flex-shrink:0}
+.loss-top-h{font-size:.66rem;text-transform:uppercase;letter-spacing:.04em;color:var(--text2);margin:8px 0 2px;flex-shrink:0}
+.loss-list{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column}
+.loss-row{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:.78rem;min-height:26px;border-bottom:1px solid #f0f1f3;flex-shrink:0}
+.loss-row:last-child{border-bottom:none}
+.loss-rank{color:#9ca3af;font-weight:600;min-width:18px}
+.loss-obj{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.loss-obj .sub{color:var(--text2);font-size:.68rem}
+.loss-bar-wrap{width:60px;height:12px;background:#f3f4f6;border-radius:6px;overflow:hidden;flex-shrink:0}
+/* span требует display:block: без него width/height игнорируются и бар не рисуется */
+.loss-bar{display:block;height:100%;border-radius:6px;background:var(--danger);opacity:.75}
+.loss-sum{font-weight:700;min-width:80px;text-align:right;white-space:nowrap}
+.loss-share{color:var(--accent);font-weight:600;min-width:46px;text-align:right;font-size:.72rem}
+.loss-row.tail .loss-bar-wrap{background:transparent}
+.loss-row.tail .loss-obj,.loss-row.tail .loss-sum{color:var(--text2);font-weight:500;font-style:italic}
+.loss-row.tail .loss-sum{font-weight:600}
+
+/* ===== КЛИЕНТЫ ===== */
+/* Клиент — не человек и не товар, поэтому маркер строки: нейтральный квадрат
+   с номером вместо аватара (остальная разметка строки общая с рейтингом). */
+.lb-cmark{width:24px;height:24px;border-radius:6px;background:#eef1f5;color:var(--text2);
+  display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700}
+/* Уровень 2 строки клиента: 6 ячеек — к четырём метрикам добавлены возвраты и
+   отмены; сетка 3 × 2 совпадает с базовой, отдельного переопределения не нужно */
+.lb-l2-val.warn{color:var(--danger)}
+.lb-l2-val.muted{color:#9ca3af;font-weight:500;font-style:italic}
+.loss-big.warn{color:var(--danger)}
+
+/* ===== ДИНАМИКА КЛИЕНТОВ (диверджентный bar-chart) ===== */
+/* Строка графика: прозрачная зона наведения на всю ширину, бар и подписи поверх */
+.dyn-hit{fill:transparent}
+.dyn-row:hover .dyn-hit{fill:#f8fafc}
+.dyn-bar{opacity:.85;transition:opacity .15s}
+.dyn-row:hover .dyn-bar{opacity:1}
+.dyn-name{font-size:11.5px;fill:var(--text)}
+.dyn-val{font-size:11.5px;font-weight:600}
+.dyn-sec{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;fill:#9ca3af}
+.dyn-cnt{font-size:10px;fill:#c3c8d0}
+
+
+
+/* ===== FADE ===== */
+.fade-bot{position:absolute;bottom:0;left:0;right:0;height:28px;background:linear-gradient(to bottom,transparent,rgba(255,255,255,.95));pointer-events:none}
+
+/* ===== TOOLTIP ===== */
+.tooltip{position:fixed;background:#1a1d24;color:#fff;padding:6px 10px;border-radius:6px;font-size:.72rem;pointer-events:none;opacity:0;transition:opacity .15s;z-index:100;white-space:nowrap}
+.tooltip.show{opacity:1}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="app-header">
+  <h1>Sales Performance Dashboard</h1>
+  <p>&nbsp;</p>
+</div>
+
+<!-- PERIOD TOOLBAR: период слева, сегмент клиента справа -->
+<div class="period-toolbar">
+  <div class="tb-left">
+    <div class="tb-controls">
+      <div class="pill-group" id="presets">
+        <button data-preset="today">Сегодня</button>
+        <button class="active" data-preset="7d">7 дней</button>
+        <button data-preset="30d">30 дней</button>
+        <button data-preset="this-month">Этот месяц</button>
+        <button data-preset="last-month">Прошлый месяц</button>
+      </div>
+      <div class="pill-group custom-period idle" id="custom-period">
+        <button type="button">Произвольный период</button>
+      </div>
+    </div>
+    <div class="range-label">
+      <strong id="range-main">17 сент 2026 — 23 сент 2026</strong>
+      <span class="dot">·</span>
+      <span class="dur" id="range-dur">7 дней</span>
+    </div>
+  </div>
+
+  <div class="tb-right">
+    <div class="pill-group" id="segment-seg">
+      <button data-segment="Enterprise">Крупный бизнес</button>
+      <button data-segment="Mid-market">Средний бизнес</button>
+      <button data-segment="SMB">Малый бизнес</button>
+    </div>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div class="dashboard">
+
+  <!-- Row 0: 6 KPI cards -->
+
+  <div class="card kpi-card">
+    <div class="kpi-label">Выручка</div>
+    <div class="kpi-value">12,4 млн ₽</div>
+    <div class="kpi-delta up">▲ +12,4%</div>
+    <svg class="spark" viewBox="0 0 120 44" preserveAspectRatio="none"><polyline points="0,38 12,32 24,35 36,28 48,30 60,22 72,25 84,18 96,20 108,12 120,15" fill="none" stroke="#3b82f6" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>
+  </div>
+  <div class="card kpi-card">
+    <div class="kpi-label">Валовая прибыль</div>
+    <div class="kpi-value">4,2 млн ₽</div>
+    <div class="kpi-delta up">▲ +8,7%</div>
+    <svg class="spark" viewBox="0 0 120 44" preserveAspectRatio="none"><polyline points="0,36 12,34 24,30 36,32 48,26 60,28 72,22 84,24 96,16 108,18 120,10" fill="none" stroke="#10b981" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>
+  </div>
+  <div class="card kpi-card">
+    <div class="kpi-label">Маржинальность</div>
+    <div class="kpi-value">33,9%</div>
+    <div class="kpi-delta up">▲ +1,2 п.п.</div>
+    <svg class="spark" viewBox="0 0 120 44" preserveAspectRatio="none"><polyline points="0,30 12,28 24,32 36,26 48,28 60,24 72,26 84,20 96,22 108,18 120,16" fill="none" stroke="#8b5cf6" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>
+  </div>
+  <div class="card kpi-card">
+    <div class="kpi-label">Количество продаж</div>
+    <div class="kpi-value">186</div>
+    <div class="kpi-delta up">▲ +5,1%</div>
+    <svg class="spark" viewBox="0 0 120 44" preserveAspectRatio="none"><polyline points="0,34 12,36 24,30 36,32 48,28 60,30 72,24 84,26 96,22 108,24 120,18" fill="none" stroke="#f59e0b" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>
+  </div>
+  <div class="card kpi-card">
+    <div class="kpi-label">Средний чек</div>
+    <div class="kpi-value">66,7 тыс ₽</div>
+    <div class="kpi-delta down">▼ −3,1%</div>
+    <svg class="spark" viewBox="0 0 120 44" preserveAspectRatio="none"><polyline points="0,18 12,22 24,20 36,24 48,22 60,26 72,24 84,28 96,26 108,30 120,28" fill="none" stroke="#ef4444" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>
+  </div>
+  <div class="card kpi-card">
+    <div class="kpi-label">Лучший менеджер</div>
+    <div class="top-mgr">
+      <div class="avatar">ИИ</div>
+      <div>
+        <div class="top-mgr-info">Иванов И.</div>
+        <div class="top-mgr-sub"><span class="def-tip" data-def="Валовая прибыль">ВП</span>: 1,84 млн ₽</div>
+        <div class="top-mgr-sub">продажи: 24</div>
+        <div class="mgr-delta up">▲ +12%</div>
+      </div>
+    </div>
+    <svg class="spark" viewBox="0 0 120 44" preserveAspectRatio="none"><polyline points="0,36 12,33 24,35 36,29 48,31 60,25 72,27 84,20 96,22 108,14 120,16" fill="none" stroke="#6366f1" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>
+  </div>
+
+  <!-- ROW 1: Рейтинг менеджеров (1/2) + Сравнение менеджеров (1/2) -->
+  <div class="card card-half">
+    <div class="card-head">
+      <div class="card-title">Рейтинг менеджеров</div>
+      <div class="seg" id="lb-seg">
+        <button class="active" data-mode="gp">Валовая прибыль</button>
+        <button data-mode="ac">Средний чек</button>
+      </div>
+    </div>
+    <div class="card-body card-body-h" style="position:relative">
+      <div class="lb-list" id="lb-container"></div>
+      <div class="fade-bot"></div>
+    </div>
+  </div>
+
+  <div class="card card-half">
+    <div class="card-head">
+      <div class="card-title">Сравнение менеджеров</div>
+      <div class="seg" id="comp-seg">
+        <button class="active" data-mode="gp">Валовая прибыль</button>
+        <button data-mode="ac">Средний чек</button>
+      </div>
+    </div>
+    <div class="card-body card-body-h" id="comp-body" style="position:relative"></div>
+  </div>
+
+  <!-- ROW 2: Клиенты — Топ-10 (1/2) + Динамика клиентов (1/2) -->
+  <!-- Смысловая пара «кто продаёт → кому продаём»: ряд следует сразу за
+        менеджерами. Две карточки отвечают на разные вопросы: «кто больше даёт»
+        (ранжирование по абсолютному значению) и «у кого результат изменился
+        сильнее» (ранжирование по абсолютной Δ). Набор метрик у обеих совпадает
+        с «Динамикой во времени»: Выручка / Валовая прибыль / Продано шт. -->
+  <div class="card card-half">
+    <div class="card-head">
+      <div class="card-title">Клиенты — Топ-10</div>
+      <div class="seg" id="cl-seg">
+        <button class="active" data-metric="gp">Валовая прибыль</button>
+        <button data-metric="ac">Средний чек</button>
+      </div>
+    </div>
+    <div class="card-body card-body-h" style="position:relative">
+      <div class="lb-list" id="cl-container"></div>
+      <div class="fade-bot"></div>
+    </div>
+  </div>
+
+
+  <div class="card card-half">
+    <div class="card-head">
+      <div class="card-title">Динамика клиентов</div>
+      <div class="seg" id="dyn-seg">
+        <button class="active" data-metric="gp">Валовая прибыль</button>
+        <button data-metric="ac">Средний чек</button>
+      </div>
+    </div>
+    <!-- График растянут на всю карточку: скролла нет, SVG строится по реальным пикселям -->
+    <div class="card-body card-body-fit" id="dyn-body"></div>
+  </div>
+
+
+
+  <!-- ROW 2: Динамика (1/2) + Продажи по категориям (1/2) -->
+  <div class="card card-half">
+    <div class="card-head">
+      <div class="card-title">Динамика во времени</div>
+      <div class="seg" id="trend-seg">
+        <button class="active" data-metric="revenue">Выручка</button>
+        <button data-metric="gp">Валовая прибыль</button>
+        <button data-metric="count">Кол-во продаж</button>
+      </div>
+    </div>
+    <div class="card-body card-body-fit" id="trend-body"></div>
+  </div>
+
+  <div class="card card-half">
+    <div class="card-head">
+      <div class="card-title">Продажи по категориям</div>
+      <div class="seg" id="cat-seg">
+        <button class="active" data-metric="revenue">Выручка</button>
+        <button data-metric="gp">Валовая прибыль</button>
+      </div>
+    </div>
+    <div class="card-body card-body-h" id="cat-body" style="display:flex;flex-direction:column;gap:12px;overflow:hidden"></div>
+  </div>
+
+
+  <!-- ROW 3: Лучшие продукты (1/2) + Последние продажи (1/2) -->
+  <div class="card card-half">
+    <div class="card-head">
+      <div class="card-title">Лучшие продукты — Топ-10</div>
+      <div class="seg" id="tp-seg">
+        <button class="active" data-mode="revenue">Выручка</button>
+        <button data-mode="gp">Валовая прибыль</button>
+        <button data-mode="units">Продано шт</button>
+      </div>
+    </div>
+    <div class="card-body card-body-h" style="position:relative">
+      <div class="tp-list" id="tp-container"></div>
+      <div class="fade-bot"></div>
+    </div>
+  </div>
+
+  <div class="card card-half">
+    <div class="card-head">
+      <div class="card-title">Последние продажи</div>
+    </div>
+    <div class="card-body card-body-h" style="position:relative">
+      <div class="sale-list" id="sales-list"></div>
+      <div class="fade-bot"></div>
+    </div>
+  </div>
+
+  <!-- ROW 4 (последняя): Возвраты (1/2) + Отмены (1/2) -->
+  <!-- Две несводимые группы: складывать их между собой нельзя, поэтому это
+       два независимых блока, а не одна карточка с двумя колонками. -->
+  <div class="card card-half card-sm">
+    <div class="card-head">
+      <div class="card-title">Возвраты</div>
+    </div>
+    <div class="card-body card-body-h" id="loss-refunds-body"></div>
+  </div>
+
+  <div class="card card-half card-sm">
+    <div class="card-head">
+      <div class="card-title">Отмены</div>
+    </div>
+    <div class="card-body card-body-h" id="loss-cancellations-body"></div>
+  </div>
+
+
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// ===== DATA =====
+// Константы внимания — синхронизированы с domain.md, «Константы внимания».
+// В вёрстке числа не дублируются: все пороги читаются из этого объекта.
+const THRESHOLDS = {
+  refundAttention: 5,      // Refund Attention Threshold, %
+  cancelAttention: 5,      // Cancellation Attention Threshold, %
+  refundMinSample: 8,      // Refund Min Sample, продаж по товару
+  cancelMinSample: 5,      // Cancellation Min Sample, созданных сделок по менеджеру
+  dynMinBaseOrders: 5,     // минимум заказов в базовом периоде для «Динамики клиентов»
+  dynTopN: 5               // размер секций «Рост» / «Падение» в «Динамике клиентов»
+};
+
+// Цвет активной метрики — по позиции таба в переключателе: 1-й таб синий,
+// 2-й зелёный, 3-й оранжевый. Один источник правды для всех карточек с табами.
+const TAB_COLORS = ['#3b82f6', '#10b981', '#f59e0b'];
+
+// created = все сделки, которые менеджер завёл (Paid + Refunded + Cancelled).
+// Итоги согласованы с KPI: Σ sales = 186, Σ created = 197, Σ cancels = 11,
+// Σ revenue = 12,4 млн ₽, Σ GP = 4,2 млн ₽.
+// prev* — предыдущий сопоставимый период: база Δ по каждому полю уровня 2 и
+// Δ доли отмен (в п.п.). revNum/gpNum — млн ₽, acNum — тыс ₽, marginNum — %.
+const managers = [
+  {pos:1,initials:'ИИ',name:'Иванов И.',team:'Alpha',sales:26,created:26,cancels:0,revenue:'2,9 млн ₽',gp:'1,10 млн ₽',ac:'111,5 тыс ₽',margin:'37,9%',barW:100,gpShare:'26,2%',acMult:'1,7×',color:'#6366f1',revNum:2.9,gpNum:1.10,acNum:111.5,marginNum:37.9,prevRevNum:2.589,prevGpNum:0.965,prevAcNum:106.2,prevMarginNum:37.3,prevCreated:24,prevCancels:0},
+  {pos:2,initials:'ПС',name:'Петров С.',team:'Alpha',sales:20,created:20,cancels:0,revenue:'1,9 млн ₽',gp:'0,70 млн ₽',ac:'95,0 тыс ₽',margin:'36,8%',barW:64,gpShare:'16,7%',acMult:'1,4×',color:'#818cf8',revNum:1.9,gpNum:0.70,acNum:95.0,marginNum:36.8,prevRevNum:1.776,prevGpNum:0.642,prevAcNum:96.0,prevMarginNum:36.2,prevCreated:18,prevCancels:0},
+  {pos:3,initials:'СК',name:'Сидоров К.',team:'Beta',sales:23,created:23,cancels:0,revenue:'1,55 млн ₽',gp:'0,53 млн ₽',ac:'67,4 тыс ₽',margin:'34,2%',barW:48,gpShare:'12,6%',acMult:'1,0×',color:'#a78bfa',revNum:1.55,gpNum:0.53,acNum:67.4,marginNum:34.2,prevRevNum:1.598,prevGpNum:0.505,prevAcNum:66.1,prevMarginNum:31.6,prevCreated:21,prevCancels:0},
+  {pos:4,initials:'МА',name:'Морозов А.',team:'Beta',sales:16,created:19,cancels:3,revenue:'1,25 млн ₽',gp:'0,41 млн ₽',ac:'78,1 тыс ₽',margin:'32,8%',barW:37,gpShare:'9,8%',acMult:'1,2×',color:'#7dd3fc',revNum:1.25,gpNum:0.41,acNum:78.1,marginNum:32.8,prevRevNum:1.190,prevGpNum:0.398,prevAcNum:77.3,prevMarginNum:33.4,prevCreated:18,prevCancels:2},
+  {pos:5,initials:'КД',name:'Кузнецова Д.',team:'Gamma',sales:19,created:21,cancels:2,revenue:'1,05 млн ₽',gp:'0,34 млн ₽',ac:'55,3 тыс ₽',margin:'32,4%',barW:31,gpShare:'8,1%',acMult:'0,8×',color:'#fbbf24',revNum:1.05,gpNum:0.34,acNum:55.3,marginNum:32.4,prevRevNum:1.094,prevGpNum:0.347,prevAcNum:57.6,prevMarginNum:31.7,prevCreated:22,prevCancels:3},
+  {pos:6,initials:'ВО',name:'Волков О.',team:'Gamma',sales:14,created:16,cancels:2,revenue:'0,9 млн ₽',gp:'0,29 млн ₽',ac:'64,3 тыс ₽',margin:'32,2%',barW:26,gpShare:'6,9%',acMult:'1,0×',color:'#fb923c',revNum:0.9,gpNum:0.29,acNum:64.3,marginNum:32.2,prevRevNum:0.833,prevGpNum:0.274,prevAcNum:63.0,prevMarginNum:32.9,prevCreated:15,prevCancels:2},
+  {pos:7,initials:'ОВ',name:'Орлова В.',team:'Alpha',sales:17,created:17,cancels:0,revenue:'0,8 млн ₽',gp:'0,25 млн ₽',ac:'47,1 тыс ₽',margin:'31,3%',barW:23,gpShare:'6,0%',acMult:'0,7×',color:'#34d399',revNum:0.8,gpNum:0.25,acNum:47.1,marginNum:31.3,prevRevNum:0.784,prevGpNum:0.240,prevAcNum:47.1,prevMarginNum:30.6,prevCreated:16,prevCancels:0},
+  {pos:8,initials:'НЛ',name:'Никитин Л.',team:'Beta',sales:12,created:13,cancels:1,revenue:'0,7 млн ₽',gp:'0,21 млн ₽',ac:'58,3 тыс ₽',margin:'30,0%',barW:19,gpShare:'5,0%',acMult:'0,9×',color:'#22d3ee',revNum:0.7,gpNum:0.21,acNum:58.3,marginNum:30.0,prevRevNum:0.745,prevGpNum:0.212,prevAcNum:57.7,prevMarginNum:28.5,prevCreated:14,prevCancels:1},
+  {pos:9,initials:'ФР',name:'Фёдоров Р.',team:'Gamma',sales:15,created:16,cancels:1,revenue:'0,6 млн ₽',gp:'0,17 млн ₽',ac:'40,0 тыс ₽',margin:'28,3%',barW:15,gpShare:'4,0%',acMult:'0,6×',color:'#a3e635',revNum:0.6,gpNum:0.17,acNum:40.0,marginNum:28.3,prevRevNum:0.583,prevGpNum:0.159,prevAcNum:39.2,prevMarginNum:27.3,prevCreated:16,prevCancels:2},
+  {pos:10,initials:'ЗМ',name:'Зайцева М.',team:'Alpha',sales:13,created:14,cancels:1,revenue:'0,45 млн ₽',gp:'0,12 млн ₽',ac:'34,6 тыс ₽',margin:'26,7%',barW:11,gpShare:'2,9%',acMult:'0,5×',color:'#c084fc',revNum:0.45,gpNum:0.12,acNum:34.6,marginNum:26.7,prevRevNum:0.446,prevGpNum:0.118,prevAcNum:34.9,prevMarginNum:26.5,prevCreated:15,prevCancels:1},
+  {pos:11,initials:'БА',name:'Беляев А.',team:'Beta',sales:11,created:12,cancels:1,revenue:'0,3 млн ₽',gp:'0,08 млн ₽',ac:'27,3 тыс ₽',margin:'26,7%',barW:7,gpShare:'1,9%',acMult:'0,4×',color:'#60a5fa',revNum:0.3,gpNum:0.08,acNum:27.3,marginNum:26.7,prevRevNum:0.294,prevGpNum:0.079,prevAcNum:27.3,prevMarginNum:26.9,prevCreated:12,prevCancels:0},
+  {pos:12,initials:'ГН',name:'Громова Н.',team:'Gamma',sales:9,created:10,cancels:1,revenue:'0,28 млн ₽',gp:'0,07 млн ₽',ac:'31,1 тыс ₽',margin:'25,0%',barW:6,gpShare:'1,7%',acMult:'0,5×',color:'#d1d5db',revNum:0.28,gpNum:0.07,acNum:31.1,marginNum:25.0,prevRevNum:0.301,prevGpNum:0.078,prevAcNum:33.4,prevMarginNum:25.9,prevCreated:10,prevCancels:2},
+  {pos:13,initials:'ТЮ',name:'Тарасов Ю.',team:'Alpha',sales:7,created:8,cancels:1,revenue:'0,22 млн ₽',gp:'0,06 млн ₽',ac:'31,4 тыс ₽',margin:'27,3%',barW:5,gpShare:'1,4%',acMult:'0,5×',color:'#93c5fd',revNum:0.22,gpNum:0.06,acNum:31.4,marginNum:27.3,prevRevNum:0.239,prevGpNum:0.064,prevAcNum:34.1,prevMarginNum:26.8,prevCreated:8,prevCancels:1},
+  {pos:14,initials:'РД',name:'Романова Д.',team:'Beta',sales:8,created:8,cancels:0,revenue:'0,18 млн ₽',gp:'0,05 млн ₽',ac:'22,5 тыс ₽',margin:'27,8%',barW:4,gpShare:'1,2%',acMult:'0,3×',color:'#f472b6',revNum:0.18,gpNum:0.05,acNum:22.5,marginNum:27.8,prevRevNum:0.171,prevGpNum:0.046,prevAcNum:21.4,prevMarginNum:26.9,prevCreated:7,prevCancels:0},
+  {pos:15,initials:'ШВ',name:'Шестаков В.',team:'Gamma',sales:6,created:7,cancels:1,revenue:'0,15 млн ₽',gp:'0,04 млн ₽',ac:'25,0 тыс ₽',margin:'26,7%',barW:3,gpShare:'1,0%',acMult:'0,4×',color:'#4ade80',revNum:0.15,gpNum:0.04,acNum:25.0,marginNum:26.7,prevRevNum:0.163,prevGpNum:0.042,prevAcNum:27.2,prevMarginNum:25.8,prevCreated:8,prevCancels:1},
+];
+
+// sales/refunds — число продаж с товаром и возвратов по товару (Paid + Refunded);
+// prevSales/prevRefunds — те же величины предыдущего сопоставимого периода (база
+// Δ доли возвратов). Количество продаж в UI не печатается — только в tooltip.
+// revNum/gpNum — тыс ₽, unitsNum — шт. Σ refunds = 9 (совпадает с Refunds Count
+// в KPI-подсказке).
+const products = [
+  {pos:1,name:'Mini 4 Pro Fly More Combo',sku:'MINI4P-FMC-01',cat:'Дроны',catColor:'#3b82f6',sales:24,refunds:3,refundValue:310000,revenue:'1,9 млн ₽',gp:'620 тыс ₽',units:'96',margin:'32,6%',revNum:1900,gpNum:620,unitsNum:96,marginNum:32.6,prevRev:1570,prevGp:520,prevUnits:88,prevMargin:33.1,prevSales:22,prevRefunds:1},
+  {pos:2,name:'Mavic 3 Pro',sku:'MAV3P-001',cat:'Дроны',catColor:'#3b82f6',sales:18,refunds:1,refundValue:122000,revenue:'1,5 млн ₽',gp:'490 тыс ₽',units:'45',margin:'32,7%',revNum:1500,gpNum:490,unitsNum:45,marginNum:32.7,prevRev:1304,prevGp:425,prevUnits:42,prevMargin:32.6,prevSales:17,prevRefunds:1},
+  {pos:3,name:'Osmo Pocket 3',sku:'OSMO-P3-01',cat:'Камеры',catColor:'#10b981',sales:31,refunds:2,refundValue:128000,revenue:'1,3 млн ₽',gp:'430 тыс ₽',units:'186',margin:'33,1%',revNum:1300,gpNum:430,unitsNum:186,marginNum:33.1,prevRev:1193,prevGp:400,prevUnits:175,prevMargin:33.5,prevSales:28,prevRefunds:1},
+  {pos:4,name:'Air 3',sku:'AIR3-STD-01',cat:'Дроны',catColor:'#3b82f6',sales:16,refunds:0,refundValue:0,revenue:'1,1 млн ₽',gp:'350 тыс ₽',units:'40',margin:'31,8%',revNum:1100,gpNum:350,unitsNum:40,marginNum:31.8,prevRev:1134,prevGp:365,prevUnits:42,prevMargin:32.2,prevSales:17,prevRefunds:2},
+  {pos:5,name:'RS 3 Gimbal',sku:'RS3-GMB-01',cat:'Стабилизаторы',catColor:'#f59e0b',sales:12,refunds:1,refundValue:68000,revenue:'0,8 млн ₽',gp:'260 тыс ₽',units:'30',margin:'32,5%',revNum:800,gpNum:260,unitsNum:30,marginNum:32.5,prevRev:755,prevGp:250,prevUnits:29,prevMargin:33.1,prevSales:12,prevRefunds:1},
+  {pos:6,name:'Pocket 3 Creator Combo',sku:'PKT3-CC-01',cat:'Камеры',catColor:'#10b981',sales:14,refunds:0,refundValue:0,revenue:'750 тыс ₽',gp:'240 тыс ₽',units:'34',margin:'32,0%',revNum:750,gpNum:240,unitsNum:34,marginNum:32.0,prevRev:721,prevGp:233,prevUnits:33,prevMargin:32.3,prevSales:13,prevRefunds:0},
+  {pos:7,name:'Action 4',sku:'ACT4-STD-01',cat:'Камеры',catColor:'#10b981',sales:22,refunds:1,refundValue:54000,revenue:'600 тыс ₽',gp:'190 тыс ₽',units:'84',margin:'31,7%',revNum:600,gpNum:190,unitsNum:84,marginNum:31.7,prevRev:556,prevGp:178,prevUnits:79,prevMargin:32.0,prevSales:20,prevRefunds:1},
+  {pos:8,name:'DJI Mic 2',sku:'MIC2-01',cat:'Аудио',catColor:'#8b5cf6',sales:19,refunds:0,refundValue:0,revenue:'500 тыс ₽',gp:'150 тыс ₽',units:'55',margin:'30,0%',revNum:500,gpNum:150,unitsNum:55,marginNum:30.0,prevRev:510,prevGp:154,prevUnits:57,prevMargin:30.2,prevSales:19,prevRefunds:1},
+  {pos:9,name:'Avata 2',sku:'AVAT2-01',cat:'Дроны',catColor:'#3b82f6',sales:6,refunds:1,refundValue:98000,revenue:'400 тыс ₽',gp:'120 тыс ₽',units:'15',margin:'30,0%',revNum:400,gpNum:120,unitsNum:15,marginNum:30.0,prevRev:381,prevGp:115,prevUnits:14,prevMargin:30.2,prevSales:6,prevRefunds:0},
+  {pos:10,name:'Care Plus',sku:'CARE-PRO-01',cat:'Сервис',catColor:'#6b7280',sales:35,refunds:0,refundValue:0,revenue:'300 тыс ₽',gp:'80 тыс ₽',units:'130',margin:'26,7%',revNum:300,gpNum:80,unitsNum:130,marginNum:26.7,prevRev:297,prevGp:79,prevUnits:129,prevMargin:26.6,prevSales:34,prevRefunds:0},
+ ];
+
+// Клиенты периода. Итоги сведены с KPI-рядом, чтобы карточки не противоречили
+// друг другу: Σ rev = 12 400 тыс ₽ (Выручка), Σ gp = 4 200 (Валовая прибыль),
+// Σ orders = 186 (Продажи), средний чек периода 66,7 тыс ₽.
+// Компании те же, что в «Последних продажах»: одна и та же сделка не может
+// называться по-разному в двух карточках.
+// rev/gp/units — текущий период (тыс ₽ / шт); prev* — предыдущий сопоставимый;
+// refundValue/cancelValue — тыс ₽; orders — число продаж клиента.
+// prevRefunds/prevCancels — предыдущий период: база Δ долей возвратов и отмен.
+// top:false — клиент вне «Топ-10» (не входит в итоги периода, согласованные
+// с KPI), но участвует в «Динамике клиентов»: у карточки динамики своя
+// выборка и своё отсечение по базовому периоду.
+const clients = [
+  {name:'ООО ТехноСнаб',segment:'Строительство',since:'2023',
+   rev:2000,gp:740,units:42,orders:18,prevRev:1450,prevGp:620,prevUnits:38,prevOrders:17,
+   refunds:1,refundValue:95,prevRefunds:2,cancels:1,cancelValue:85,prevCancels:1},
+  {name:'АО СтройИнвест',segment:'Промышленность',since:'2022',
+   rev:1750,gp:560,units:88,orders:24,prevRev:1382,prevGp:490,prevUnits:74,prevOrders:4,
+   refunds:2,refundValue:180,prevRefunds:1,cancels:2,cancelValue:210,prevCancels:3},
+  {name:'ООО Дрон Маркет',segment:'Ритейл',since:'2024',
+   rev:1600,gp:512,units:95,orders:19,prevRev:1040,prevGp:332,prevUnits:62,prevOrders:16,
+   refunds:1,refundValue:60,prevRefunds:2,cancels:0,cancelValue:0,prevCancels:0},
+  {name:'АО Вектор',segment:'Энергетика',since:'2023',
+   rev:1250,gp:475,units:38,orders:13,prevRev:1380,prevGp:525,prevUnits:40,prevOrders:15,
+   refunds:1,refundValue:75,prevRefunds:2,cancels:2,cancelValue:260,prevCancels:1},
+  {name:'ООО Логистик',segment:'Логистика',since:'2021',
+   rev:1400,gp:406,units:120,orders:30,prevRev:1460,prevGp:446,prevUnits:132,prevOrders:30,
+   refunds:0,refundValue:0,prevRefunds:0,cancels:1,cancelValue:95,prevCancels:2},
+  {name:'ООО Альфа Трейд',segment:'Ритейл',since:'2025',
+   rev:950,gp:342,units:34,orders:11,prevRev:700,prevGp:242,prevUnits:24,prevOrders:6,
+   refunds:1,refundValue:55,prevRefunds:1,cancels:1,cancelValue:130,prevCancels:0},
+  {name:'АО Глобал',segment:'Медиа',since:'2022',
+   rev:1000,gp:339,units:80,orders:20,prevRev:1080,prevGp:359,prevUnits:84,prevOrders:23,
+   refunds:1,refundValue:40,prevRefunds:1,cancels:2,cancelValue:175,prevCancels:1},
+  {name:'АО Технопарк',segment:'Ритейл',since:'2024',
+   rev:900,gp:300,units:96,orders:22,prevRev:850,prevGp:275,prevUnits:92,prevOrders:22,
+   refunds:1,refundValue:120,prevRefunds:0,cancels:1,cancelValue:60,prevCancels:2},
+  {name:'ИП Морозов',segment:'Услуги',since:'2021',
+   rev:800,gp:264,units:45,orders:14,prevRev:790,prevGp:253,prevUnits:44,prevOrders:13,
+   refunds:0,refundValue:0,prevRefunds:0,cancels:0,cancelValue:0,prevCancels:0},
+  {name:'ИП Соколов',segment:'Агро',since:'2026',
+   rev:750,gp:262,units:52,orders:15,prevRev:900,prevGp:322,prevUnits:108,prevOrders:31,
+   refunds:1,refundValue:155,prevRefunds:2,cancels:1,cancelValue:225,prevCancels:2},
+  {name:'ООО Промтехника',segment:'Промышленность',since:'2022',top:false,
+   rev:700,gp:210,units:40,orders:12,prevRev:850,prevGp:320,prevUnits:70,prevOrders:12,
+   refunds:0,refundValue:0,prevRefunds:0,cancels:1,cancelValue:70,prevCancels:1},
+  // Второй клиент вне топ-10: нужен, чтобы секция «Падение» была заполнена на
+  // dynTopN и по среднему чеку. Выручка не изменилась, но выросло число заказов —
+  // средний чек упал (840/20 против 840/12), а маржа и ВП те же, поэтому на
+  // «Валовой прибыли» клиент в секции не появляется и расклад ВП не меняется.
+  {name:'ООО СтройГрад',segment:'Строительство',since:'2023',top:false,
+   rev:840,gp:290,units:50,orders:20,prevRev:840,prevGp:290,prevUnits:40,prevOrders:12,
+   refunds:0,refundValue:0,prevRefunds:0,cancels:1,cancelValue:60,prevCancels:1},
+];
+
+
+// Две независимые группы. Общий итог «всего потерь» не вычисляется и не печатается
+// (domain.md, «Показатели вне выручки»; ui.md, п. 8).
+// Список — топ-10 с хвостом «Остальные N», доли строк топа плюс доля хвоста
+// дают 100% группы.
+const losses = {
+  refunds:{
+    title:'Возвраты', owner:'ответственность продукта',
+    rate:4.8, rateDeltaPctPoints:0.9,      // Δ доли — в п.п. (domain.md)
+    value:780000, count:12,
+    spark:[45,95,0,120,60,0,145,80,95,140], // тыс ₽ по дням периода, сумма = 780
+    // срез жёстко привязан: возвраты → только товары. Σ value = 780 тыс ₽,
+    // Σ count = 12 — совпадает с Σ refunds по товарам в products
+    top:[
+      {name:'Mini 4 Pro Fly More Combo',sub:'Дроны',value:195000,count:2},
+      {name:'Osmo Pocket 3',sub:'Камеры',value:128000,count:2},
+      {name:'Mavic 3 Pro',sub:'Дроны',value:122000,count:1},
+      {name:'Avata 2',sub:'Дроны',value:98000,count:1},
+      {name:'RS 3 Gimbal',sub:'Стабилизаторы',value:68000,count:1},
+      {name:'Action 4',sub:'Камеры',value:54000,count:1},
+      {name:'Air 3',sub:'Дроны',value:45000,count:1},
+      {name:'Pocket 3 Creator Combo',sub:'Камеры',value:32000,count:1},
+      {name:'DJI Mic 2',sub:'Аудио',value:24000,count:1},
+      {name:'Care Plus',sub:'Сервис',value:14000,count:1}
+    ],
+    tail:{count:1, value:14000}
+  },
+  cancellations:{
+    title:'Отмены', owner:'ответственность менеджера',
+    rate:5.6, rateDeltaPctPoints:-1.5,
+    value:1240000, count:14,
+    spark:[120,0,180,95,0,210,145,0,165,325], // тыс ₽, сумма = 1240
+    // срез жёстко привязан: отмены → только менеджеры. Σ value = 1240 тыс ₽,
+    // Σ count = 14 — совпадает с Σ cancels по менеджерам
+    top:[
+      {name:'Морозов А.',sub:'Beta',value:300000,count:3},
+      {name:'Кузнецова Д.',sub:'Gamma',value:250000,count:2},
+      {name:'Волков О.',sub:'Gamma',value:190000,count:2},
+      {name:'Зайцева М.',sub:'Alpha',value:140000,count:1},
+      {name:'Никитин Л.',sub:'Beta',value:100000,count:1},
+      {name:'Фёдоров Р.',sub:'Gamma',value:80000,count:1},
+      {name:'Громова Н.',sub:'Gamma',value:60000,count:1},
+      {name:'Беляев А.',sub:'Beta',value:40000,count:1},
+      {name:'Тарасов Ю.',sub:'Alpha',value:36000,count:1},
+      {name:'Шестаков В.',sub:'Gamma',value:44000,count:1}
+    ],
+    tail:{ value:40000,count:1 },
+  }
+};
+
+const recentSales = [
+  {date:'23.09 14:32',mgr:'Иванов И.',client:'ООО ТехноСнаб',items:'3 товара',status:'Выполнена',amount:'385 тыс ₽',gp:'119 тыс ₽',badge:'badge-paid'},
+  {date:'23.09 11:15',mgr:'Петров С.',client:'АО СтройИнвест',items:'1 товар',status:'Выполнена',amount:'210 тыс ₽',gp:'63 тыс ₽',badge:'badge-paid'},
+  {date:'22.09 16:48',mgr:'Сидоров К.',client:'ИП Морозов',items:'5 товаров',status:'Отменена',reason:'не согласовали бюджет',amount:'450 тыс ₽',gp:'—',badge:'badge-cancelled'},
+  {date:'22.09 13:20',mgr:'Морозов А.',client:'ООО Альфа Трейд',items:'2 товара',status:'Выполнена',amount:'178 тыс ₽',gp:'52 тыс ₽',badge:'badge-paid'},
+  {date:'22.09 10:05',mgr:'Кузнецова Д.',client:'АО Вектор',items:'1 товар',status:'Возврат',reason:'не устроила комплектация',amount:'95 тыс ₽',gp:'—',badge:'badge-refunded'},
+  {date:'21.09 17:30',mgr:'Волков О.',client:'ООО Логистик',items:'4 товара',status:'Выполнена',amount:'320 тыс ₽',gp:'96 тыс ₽',badge:'badge-paid'},
+  {date:'21.09 15:12',mgr:'Орлова В.',client:'ИП Соколов',items:'2 товара',status:'Выполнена',amount:'145 тыс ₽',gp:'43 тыс ₽',badge:'badge-paid'},
+  {date:'21.09 09:40',mgr:'Никитин Л.',client:'АО Глобал',items:'3 товара',status:'Выполнена',amount:'268 тыс ₽',gp:'78 тыс ₽',badge:'badge-paid'},
+  {date:'20.09 18:00',mgr:'Фёдоров Р.',client:'ООО Дрон Маркет',items:'6 товаров',status:'Выполнена',amount:'510 тыс ₽',gp:'153 тыс ₽',badge:'badge-paid'},
+  {date:'20.09 14:25',mgr:'Зайцева М.',client:'ИП Кузнецов',items:'2 товара',status:'Возврат',reason:'ошибка в спецификации',amount:'125 тыс ₽',gp:'—',badge:'badge-refunded'},
+  {date:'19.09 16:10',mgr:'Беляев А.',client:'ООО Ремонт',items:'1 товар',status:'Выполнена',amount:'85 тыс ₽',gp:'24 тыс ₽',badge:'badge-paid'},
+  {date:'19.09 11:35',mgr:'Иванов И.',client:'АО Технопарк',items:'3 товара',status:'Выполнена',amount:'295 тыс ₽',gp:'89 тыс ₽',badge:'badge-paid'},
+];
+
+// Подпись статуса по-русски; tooltip объясняет сам статус, без перечисления метрик
+// (domain.md, «Статусы продажи»).
+const STATUS_NOTE = {
+  'Выполнена':'Деньги получены — продажа состоялась',
+  'Возврат':'Оплата была, деньги возвращены клиенту',
+  'Отменена':'Сделки не было, оплаты не было'
+};
+
+// ===== HELPERS =====
+function fmtMoney(v){
+  if(v===0) return '0 ₽';
+  const sign = v<0 ? '\u2212' : '';          // U+2212, не дефис (ui.md, п. 2)
+  const a = Math.abs(v);
+  if(a>=1e6) return sign+(a/1e6).toFixed(2).replace('.',',').replace(/,?0+$/,'')+' млн ₽';
+  if(a>=1e3) return sign+Math.round(a/1e3)+' тыс ₽';
+  return sign+a+' ₽';
+}
+function fmtPct(v){ return v.toFixed(1).replace('.',',')+'%'; }
+// Относительная Δ: знак перед числом, единица % (клиентские карточки)
+function fmtSignedPct(v){
+  const s = v>0?'+':(v<0?'\u2212':'');
+  return s+Math.abs(v).toFixed(1).replace('.',',')+'%';
+}
+// Единица измерения вынесена в заголовок карточки — в ячейках остаётся только число
+function fmtPts(v){                            // процентные пункты — только для долей
+  const s = v>0?'+':(v<0?'\u2212':'');
+  return s+Math.abs(v).toFixed(1).replace('.',',')+' п.п.';
+}
+// Δ «хорошей» метрики: стрелка + знак + один знак после запятой, U+2212 для минуса.
+// null/undefined (неопределённая Δ, пустой предыдущий период) → «—» серым.
+function fmtDelta(v){
+  if(v===null||v===undefined) return {text:'—', cls:'flat'};
+  const s = v>0?'+':(v<0?'\u2212':'');
+  const arrow = v>0?'\u25B2':(v<0?'\u25BC':'');
+  return {text:`${arrow} ${s}${Math.abs(v).toFixed(1).replace('.',',')}%`, cls: v>0?'up':(v<0?'down':'flat')};
+}
+// Относительная Δ «хорошей» метрики (выручка, ВП, продано, средний чек):
+// null при пустой базе предыдущего периода.
+function relDelta(cur, prev){
+  if(!prev) return null;
+  return (cur-prev)/prev*100;
+}
+// Δ поля карточки клиентов: относительная (%), стрелка + знак, «—» серым.
+function goodDelta(v){
+  if(v===null||v===undefined) return {text:'—', cls:'flat'};
+  const arrow = v>0?'\u25B2':(v<0?'\u25BC':'');
+  const s = v>0?'+':(v<0?'\u2212':'');
+  return {text:`${arrow} ${s}${Math.abs(v).toFixed(1).replace('.',',')}%`, cls: v>0?'up':(v<0?'down':'flat')};
+}
+// Δ «плохой» метрики (возвраты, отмены): в п.п., рост доли красный, падение зелёное.
+// Не определена при пустой базе доли или выборке ниже минимума → «—» серым.
+function badDelta(curRate, prevRate, minSample, base){
+  if(curRate===null || prevRate===null || base < minSample) return {text:'—', cls:'flat'};
+  const d = curRate - prevRate;
+  return {text:fmtPts(d), cls: d>0?'bad':(d<0?'good':'flat')};
+}
+// Δ метрики-доли в п.п. (маржинальность, доля отмен). Для «плохой» метрики
+// (negative=true) рост доли — ухудшение, поэтому красный, а падение — зелёное.
+function ptsDelta(d, negative){
+  if(d===null||d===undefined) return {text:'—', cls:'flat'};
+  const cls = d>0 ? (negative?'bad':'up') : (d<0 ? (negative?'good':'down') : 'flat');
+  return {text:fmtPts(d), cls};
+}
+// Доля как число: null при пустом знаменателе
+function rate(count, base){ return base ? count/base*100 : null; }
+function plural(n,one,few,many){
+  const m10=n%10, m100=n%100;
+  if(m10===1&&m100!==11) return one;
+  if(m10>=2&&m10<=4&&!(m100>=12&&m100<=14)) return few;
+  return many;
+}
+
+// Набор метрик одинаков у обеих клиентских карточек: Валовая прибыль / Средний чек.
+// ВП аддитивна по клиентам → вклад печатается долей от итога; средний чек не
+// аддитивен → вклад печатается кратностью среднему чеку (то же правило, что в
+// рейтинге менеджеров).
+const CLIENT_METRICS = {
+  gp: {label:'Валовая прибыль', color:TAB_COLORS[0], kind:'additive', cur:c=>c.gp, prev:c=>c.prevGp,
+       fmt:v=>fmtMoney(v*1000), unit:'от ВП периода'},
+  ac: {label:'Средний чек', color:TAB_COLORS[1], kind:'average', cur:c=>c.rev/c.orders, prev:c=>c.prevRev/c.prevOrders,
+       fmt:v=>fmtMoney(v*1000), unit:'к среднему чеку'}
+};
+
+// Доля возвратов/отмен: печатается всегда, порог включает только акцент.
+// Знаменатель возвратов — продажи клиента Paid+Refunded, отмен — все его сделки.
+function rateInfo(count, base, threshold, minSample){
+  if(count===0) return {text:'нет', cls:'muted'};
+  if(base < minSample) return {text:'мало данных', cls:'muted'};
+  const rate = count/base*100;
+  return {text:fmtPct(rate), cls: rate>=threshold ? 'warn' : ''};
+}
+
+// ===== RENDER CLIENTS TOP-10 (1/2) =====
+// Разметка строки общая с рейтингом менеджеров (lb-*): тот же grid-ряд
+// «имя | трек + значение | вклад». Отличается маркер (клиент — не человек),
+// отсутствием Δ уровня 1 (её место занимает вклад) и уровнем 2: шесть полей
+// (3 × 2), каждое со своей Δ к предыдущему периоду. Ранжирование — по
+// абсолютному значению активной метрики.
+function renderClients(mode){
+  const m = CLIENT_METRICS[mode];
+  const list = clients.filter(c=>c.top!==false).sort((a,b)=>m.cur(b)-m.cur(a));
+  const total = list.reduce((s,c)=>s+m.cur(c),0);
+  const max = m.cur(list[0]) || 1;
+  // Вклад: для аддитивной метрики — доля от итога, для средней — кратность
+  // среднему по списку (сумма средних чеков смысла не имеет)
+  const avgAc = list.reduce((s,c)=>s+m.cur(c),0) / (list.length || 1);
+
+  document.getElementById('cl-container').innerHTML = list.map((c,i)=>{
+    const cur = m.cur(c);
+    const barW = Math.round(cur/max*100);
+
+    const refundBase = c.orders + c.refunds;
+    const prevRefundBase = c.prevOrders + c.prevRefunds;
+    const cancelBase = c.orders + c.refunds + c.cancels;
+    const prevCancelBase = c.prevOrders + c.prevRefunds + c.prevCancels;
+
+    const refund = rateInfo(c.refunds, refundBase, THRESHOLDS.refundAttention, THRESHOLDS.refundMinSample);
+    const cancel = rateInfo(c.cancels, cancelBase, THRESHOLDS.cancelAttention, THRESHOLDS.cancelMinSample);
+    const refundDelta = badDelta(rate(c.refunds,refundBase), rate(c.prevRefunds,prevRefundBase),
+      THRESHOLDS.refundMinSample, refundBase);
+    const cancelDelta = badDelta(rate(c.cancels,cancelBase), rate(c.prevCancels,prevCancelBase),
+      THRESHOLDS.cancelMinSample, cancelBase);
+
+    // Δ метрик уровня 2; маржинальность — Δ доли, поэтому в п.п.
+    const revDelta = goodDelta(relDelta(c.rev, c.prevRev));
+    const gpDelta = goodDelta(relDelta(c.gp, c.prevGp));
+    const marginDelta = goodDelta(relDelta(c.gp/c.rev, c.prevGp/c.prevRev));
+    marginDelta.text = fmtPts((c.gp/c.rev - c.prevGp/c.prevRev)*100);
+    const acDelta = goodDelta(relDelta(c.rev/c.orders, c.prevRev/c.prevOrders));
+
+    const refundTip = c.refunds===0 ? 'возвратов за период не было'
+      : `возвраты ${c.refunds} из ${refundBase} продаж · было ${c.prevRefunds} из ${prevRefundBase} · ${fmtMoney(c.refundValue*1000)}`;
+    const cancelTip = c.cancels===0 ? 'отмен за период не было'
+      : `отмены ${c.cancels} из ${cancelBase} сделок · было ${c.prevCancels} из ${prevCancelBase} · ${fmtMoney(c.cancelValue*1000)}`;
+
+    return `<div class="lb-row">
+      <div class="lb-pos-dot"><div class="lb-cmark">${i+1}</div></div>
+      <div class="lb-body">
+        <div class="lb-name">${c.name}</div>
+        <div class="lb-nums">
+          <div class="lb-bar-wrap"><div class="lb-bar" style="width:${barW}%;background:${m.color}"></div></div>
+          <div class="lb-val">${m.fmt(cur)}</div>
+        </div>
+        <div class="lb-line2">клиент с ${c.since} · ${c.orders} ${plural(c.orders,'заказ','заказа','заказов')}</div>
+        <div class="lb-contribution">${m.kind==='additive'
+          ? fmtPct(cur/total*100)+' '+m.unit
+          : (cur/avgAc).toFixed(1).replace('.',',')+'× '+m.unit}</div>
+        <div class="lb-l2">
+          <div class="lb-l2-item"><span class="lb-l2-label">Выручка</span><span class="lb-l2-val">${fmtMoney(c.rev*1000)}</span><span class="lb-l2-delta ${revDelta.cls}">${revDelta.text}</span></div>
+          <div class="lb-l2-item"><span class="lb-l2-label">Валовая прибыль</span><span class="lb-l2-val">${fmtMoney(c.gp*1000)}</span><span class="lb-l2-delta ${gpDelta.cls}">${gpDelta.text}</span></div>
+          <div class="lb-l2-item"><span class="lb-l2-label">Маржинальность</span><span class="lb-l2-val">${fmtPct(c.gp/c.rev*100)}</span><span class="lb-l2-delta ${marginDelta.cls}">${marginDelta.text}</span></div>
+          <div class="lb-l2-item"><span class="lb-l2-label">Средний чек</span><span class="lb-l2-val">${fmtMoney(c.rev/c.orders*1000)}</span><span class="lb-l2-delta ${acDelta.cls}">${acDelta.text}</span></div>
+          <div class="lb-l2-item"><span class="lb-l2-label">Возвраты</span><span class="lb-l2-val ${refund.cls}" data-tip="${refundTip}">${refund.text}</span><span class="lb-l2-delta ${refundDelta.cls}">${refundDelta.text}</span></div>
+          <div class="lb-l2-item"><span class="lb-l2-label">Отмены</span><span class="lb-l2-val ${cancel.cls}" data-tip="${cancelTip}">${cancel.text}</span><span class="lb-l2-delta ${cancelDelta.cls}">${cancelDelta.text}</span></div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Tooltip на долях возвратов/отмен: абсолют и база доли
+  const tip = document.getElementById('tooltip');
+  document.querySelectorAll('#cl-container [data-tip]').forEach(el=>{
+    el.addEventListener('mouseenter', () => { tip.textContent = el.dataset.tip; tip.classList.add('show'); });
+    el.addEventListener('mousemove', e => {
+      tip.style.left = e.clientX + 12 + 'px'; tip.style.top = e.clientY - 28 + 'px';
+    });
+    el.addEventListener('mouseleave', () => tip.classList.remove('show'));
+  });
+}
+
+// ===== RENDER CLIENTS DYNAMICS (1/2) =====
+// Диверджентный bar-chart: бары растут вправо (рост) и влево (падение) от общей
+// нулевой линии. Ранжирование и длина бара — по абсолютной Δ к предыдущему
+// сопоставимому периоду, подпись строки — относительная Δ.
+// Отсечение артефактов: в рейтинг входят только клиенты с не менее чем
+// dynMinBaseOrders заказов в базовом периоде.
+function renderClientDynamics(mode){
+  const m = CLIENT_METRICS[mode];
+  const body = document.getElementById('dyn-body');
+
+  const all = clients.map(c => ({c, d: m.cur(c)-m.prev(c), base: c.prevOrders}));
+  const eligible = all.filter(x => x.base >= THRESHOLDS.dynMinBaseOrders);
+  const growth  = eligible.filter(x=>x.d>0).sort((a,b)=>b.d-a.d).slice(0,THRESHOLDS.dynTopN);
+  const decline = eligible.filter(x=>x.d<0).sort((a,b)=>a.d-b.d).slice(0,THRESHOLDS.dynTopN);
+
+  const box = body.getBoundingClientRect();
+  const W = Math.max(360, Math.round(box.width));
+  const H = Math.max(240, Math.round(box.height));
+
+  const plotL = 205;            // начало области баров (слева — подписи падения)
+  const plotR = W - 82;         // конец области баров (справа — подписи роста)
+  const halfW = (plotR - plotL) / 2;
+  const zeroX = plotL + halfW;  // нулевая линия по центру
+  const gap = 8;
+  const headH = 20, secGap = 18;
+  // Геометрия фиксируется по максимуму строк (dynTopN в каждой секции), а не по
+  // фактическому числу: иначе при переключении метрики набор баров меняется и
+  // весь график смещается. Пустые слоты секции резервируются — заголовки секций,
+  // нулевая линия и высота строк остаются на месте между метриками.
+  const slots = THRESHOLDS.dynTopN;
+  const rowH = Math.max(20, Math.min(44, Math.floor((H - 2*headH - secGap) / (2*slots))));
+  const padT = Math.max(0, Math.round((H - (2*headH + secGap + 2*slots*rowH)) / 2));
+
+  const maxAbs = Math.max(...all.map(x=>Math.abs(x.d)), 1);
+  const signed = d => (d>0?'+':'\u2212') + m.fmt(Math.abs(d));
+
+  function row(x, cy, isGrowth){
+    const len = Math.abs(x.d)/maxAbs*halfW;
+    const color = isGrowth ? '#10b981' : '#ef4444';
+    const barX = isGrowth ? zeroX : zeroX - len;
+    const valX = isGrowth ? zeroX + len + gap : zeroX - len - gap;
+    const anchor = isGrowth ? 'start' : 'end';
+    const prevV = m.prev(x.c), curV = m.cur(x.c);
+    // Подпись у бара — относительная; тултип — абсолютная деталь (без имени и метрики)
+    const rel = prevV===0 ? '—' : fmtSignedPct(x.d/prevV*100);
+    const tip = `${m.fmt(prevV)} → ${m.fmt(curV)} · ${signed(x.d)}`;
+    return `<g class="dyn-row" data-tip="${tip}">
+      <rect class="dyn-hit" x="0" y="${cy-rowH/2}" width="${W}" height="${rowH}"></rect>
+      <text class="dyn-name" x="4" y="${cy+4}">${x.c.name}</text>
+      <rect class="dyn-bar" x="${barX}" y="${cy-6}" width="${Math.max(len,1)}" height="12" rx="3" fill="${color}"></rect>
+      <text class="dyn-val" x="${valX}" y="${cy+4}" text-anchor="${anchor}" fill="${color}">${rel}</text>
+    </g>`;
+  }
+
+  let svg = '';
+  let y = padT;
+
+  svg += `<text class="dyn-sec" x="4" y="${y+11}">Рост</text>`;
+  y += headH;
+  growth.forEach((x,i)=>{ svg += row(x, y + i*rowH + rowH/2, true); });
+  y += slots*rowH + secGap/2;
+  svg += `<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#f0f1f3" stroke-width="1"></line>`;
+  y += secGap/2;
+
+  svg += `<text class="dyn-sec" x="4" y="${y+11}">Падение</text>`;
+  y += headH;
+  decline.forEach((x,i)=>{ svg += row(x, y + i*rowH + rowH/2, false); });
+  y += slots*rowH;
+
+  // Нулевая линия поверх баров
+  svg += `<line x1="${zeroX}" y1="${padT+headH-6}" x2="${zeroX}" y2="${y}" stroke="#d1d5db" stroke-width="1" stroke-dasharray="3 3"></line>`;
+
+  body.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">${svg}</svg>`;
+}
+
+
+// ===== RENDER LEADERBOARD (одноколоночный, span 6) =====
+// Доля отмен — полем уровня 2 (порог и минимальная выборка — из «Констант
+// внимания»): «нет» при реальном нуле, «мало данных» ниже выборки, «—» без сделок.
+function cancelField(m){
+  if(m.created===0) return {text:'—', cls:'muted'};
+  if(m.cancels===0) return {text:'нет', cls:'muted'};
+  if(m.created < THRESHOLDS.cancelMinSample) return {text:'мало данных', cls:'muted'};
+  const r = m.cancels/m.created*100;
+  return {text:fmtPct(r), cls: r>=THRESHOLDS.cancelAttention ? 'warn' : ''};
+}
+
+function renderLB(mode){
+  const c = document.getElementById('lb-container');
+  c.innerHTML = '';
+  const maxAc = Math.max(...managers.map(m=>m.acNum),1);
+  // Сортировка по активной метрике, по убыванию. При равенстве — детерминированный
+  // добор: сначала по выручке, затем по имени (A→Я), чтобы позиции не «прыгали»
+  // (domain.md, «Рейтинг менеджеров»).
+  const key = mode==='gp' ? (m=>m.gpNum) : (m=>m.acNum);
+  const list = [...managers].sort((a,b)=>
+    key(b)-key(a) || b.revNum-a.revNum || a.name.localeCompare(b.name,'ru')
+  );
+  list.forEach(m => {
+    const barColor = mode==='gp' ? TAB_COLORS[0] : TAB_COLORS[1];
+    const val = mode==='gp' ? m.gp : m.ac;
+    const contrib = mode==='gp' ? m.gpShare + ' от общей ВП' : m.acMult + ' к среднему чеку';
+    const barW = m.barW===0 ? 0 : (mode==='ac' ? Math.round(m.acNum/maxAc*100) : m.barW);
+    const salesTxt = m.sales===0 ? 'нет продаж' : m.sales+' '+plural(m.sales,'продажа','продажи','продаж');
+
+    // Δ полей уровня 2; маржинальность и доля отмен — Δ долей, поэтому в п.п.
+    const revDelta = goodDelta(relDelta(m.revNum, m.prevRevNum));
+    const gpDelta = goodDelta(relDelta(m.gpNum, m.prevGpNum));
+    const acDelta = goodDelta(relDelta(m.acNum, m.prevAcNum));
+    const marginDelta = m.marginNum===null || m.prevMarginNum===null
+      ? {text:'—', cls:'flat'}
+      : ptsDelta(m.marginNum - m.prevMarginNum, false);
+    // Доля отмен: Δ в п.п., рост — ухудшение (метрика «плохая»)
+    const curRate = rate(m.cancels, m.created);
+    const prevRate = rate(m.prevCancels, m.prevCreated);
+    const cancelDelta = (curRate===null || prevRate===null || m.created < THRESHOLDS.cancelMinSample)
+      ? {text:'—', cls:'flat'}
+      : ptsDelta(curRate - prevRate, true);
+    const cancel = cancelField(m);
+    const cancelTip = m.created===0 ? 'сделок за период не было'
+      : `отмен ${m.cancels} из ${m.created} созданных · было ${m.prevCancels} из ${m.prevCreated}`;
+
+    const row = document.createElement('div');
+    row.className = 'lb-row' + (m.sales===0 ? ' zero' : '');
+    row.innerHTML = `
+      <div class="lb-pos-dot"><div class="avatar-sm" style="background:${m.color}">${m.initials}</div></div>
+      <div class="lb-body">
+        <div class="lb-name">${m.name}</div>
+        <div class="lb-nums">
+          <div class="lb-bar-wrap"><div class="lb-bar" style="width:${barW}%;background:${barColor}"></div></div>
+          <div class="lb-val">${val}</div>
+        </div>
+        <div class="lb-line2">Команда ${m.team} · ${salesTxt}</div>
+        <div class="lb-contribution">${m.sales===0?'—':contrib}</div>
+        <div class="lb-l2">
+          <div class="lb-l2-item"><span class="lb-l2-label">Выручка</span><span class="lb-l2-val">${m.revenue}</span><span class="lb-l2-delta ${revDelta.cls}">${revDelta.text}</span></div>
+          <div class="lb-l2-item"><span class="lb-l2-label">Валовая прибыль</span><span class="lb-l2-val">${m.gp}</span><span class="lb-l2-delta ${gpDelta.cls}">${gpDelta.text}</span></div>
+          <div class="lb-l2-item"><span class="lb-l2-label">Маржинальность</span><span class="lb-l2-val">${m.margin}</span><span class="lb-l2-delta ${marginDelta.cls}">${marginDelta.text}</span></div>
+          <div class="lb-l2-item"><span class="lb-l2-label">Средний чек</span><span class="lb-l2-val">${m.ac}</span><span class="lb-l2-delta ${acDelta.cls}">${acDelta.text}</span></div>
+          <div class="lb-l2-item"><span class="lb-l2-label">Отмены</span><span class="lb-l2-val ${cancel.cls}" data-tip="${cancelTip}">${cancel.text}</span><span class="lb-l2-delta ${cancelDelta.cls}">${cancelDelta.text}</span></div>
+        </div>
+      </div>
+    `;
+    // Tooltip на треке (не на заполненной части): при 0% цветной части внутри
+    // нет площади для наведения, поэтому слушатели висят на всём треке
+    const barEl = row.querySelector('.lb-bar-wrap');
+    const tip = document.getElementById('tooltip');
+    barEl.addEventListener('mouseenter', () => {
+      tip.textContent = mode==='gp'
+        ? `Валовая прибыль ${m.gp} · ${m.gpShare} от общей валовой прибыли 10,1 млн ₽`
+        : `${m.acMult} к среднему чеку 42,6 тыс ₽`;
+      tip.classList.add('show');
+    });
+    barEl.addEventListener('mousemove', e => {
+      tip.style.left = e.clientX + 12 + 'px';
+      tip.style.top = e.clientY - 28 + 'px';
+    });
+    barEl.addEventListener('mouseleave', () => tip.classList.remove('show'));
+    // Tooltip по доле отмен: абсолютные числа спрятаны здесь
+    const cancEl = row.querySelector('[data-tip]');
+    if(cancEl){
+      cancEl.addEventListener('mouseenter', () => {
+        tip.textContent = cancEl.dataset.tip;
+        tip.classList.add('show');
+      });
+      cancEl.addEventListener('mousemove', e => {
+        tip.style.left = e.clientX + 12 + 'px'; tip.style.top = e.clientY - 28 + 'px';
+      });
+      cancEl.addEventListener('mouseleave', () => tip.classList.remove('show'));
+    }
+    c.appendChild(row);
+  });
+}
+
+// ===== RENDER TOP PRODUCTS (одноколоночный, span 6) =====
+// Возвраты — полем: доля по продажам, с акцентом по порогу и мин. выборке.
+// Δ доли считается в п.п.; рост — красный, падение — зелёное («плохая» метрика).
+// Доля не определена (мало данных / пустая база) → Δ «—» (ui.md, п. 5b).
+function refundField(p){
+  const rate = p.sales ? p.refunds/p.sales*100 : null;
+  const prevRate = p.prevSales ? p.prevRefunds/p.prevSales*100 : null;
+  let delta = {text:'—', cls:'flat'};
+  if(rate!==null && prevRate!==null && p.sales >= THRESHOLDS.refundMinSample){
+    const d = rate - prevRate;
+    delta = {text:fmtPts(d), cls: d>0?'bad':(d<0?'good':'flat')};
+  }
+  if(p.refunds===0) return {text:'нет', cls:'muted', delta};
+  if(p.sales < THRESHOLDS.refundMinSample) return {text:'мало данных', cls:'muted', delta};
+  return {text:fmtPct(rate), cls: rate>=THRESHOLDS.refundAttention ? 'warn' : '', delta};
+}
+
+function renderTP(mode){
+  const c = document.getElementById('tp-container');
+  c.innerHTML = '';
+  // Трек бара растянут на всё свободное место между названием и значением,
+  // заполненная часть — % от максимума активной метрики (лидер = 100%):
+  // чем больше значение, тем дальше бар тянется вправо к числу.
+  const maxNum = Math.max(...products.map(p =>
+    mode==='revenue' ? p.revNum : mode==='gp' ? p.gpNum : p.unitsNum
+  ), 1);
+  products.forEach(p => {
+    let val, num;
+    if(mode==='revenue'){ val=p.revenue; num=p.revNum; }
+    else if(mode==='gp'){ val=p.gp; num=p.gpNum; }
+    else { val=p.units+' шт'; num=p.unitsNum; }
+    const barPct = Math.round(num/maxNum*100);
+    const barColor = mode==='revenue'?TAB_COLORS[0]:mode==='gp'?TAB_COLORS[1]:TAB_COLORS[2];
+    // Δ метрик — относительные (%), Δ маржинальности — процентные пункты
+    const revDelta = goodDelta(relDelta(p.revNum,p.prevRev));
+    const gpDelta = goodDelta(relDelta(p.gpNum,p.prevGp));
+    const unitsDelta = goodDelta(relDelta(p.unitsNum,p.prevUnits));
+    const marginDelta = {text:fmtPts(p.marginNum-p.prevMargin),
+      cls:p.marginNum-p.prevMargin>0?'up':(p.marginNum-p.prevMargin<0?'down':'flat')};
+    const refund = refundField(p);
+    const row = document.createElement('div');
+    row.className = 'tp-item';
+    row.innerHTML = `
+      <div class="tp-line1">
+        <div class="tp-pos-dot"><div class="tp-dot" style="background:${p.catColor}"></div></div>
+        <div class="tp-title">${p.name}</div>
+        <div class="tp-bar-wrap"><div class="tp-bar" style="width:${barPct}%;background:${barColor}"></div></div>
+        <div class="tp-value">${val}</div>
+      </div>
+      <div class="tp-line2">${p.sku} · ${p.cat}</div>
+      <div class="tp-l2">
+        <div class="tp-l2-cell">
+          <span class="tp-l2-label">Выручка</span>
+          <span class="tp-l2-val">${p.revenue}</span>
+          <span class="tp-delta ${revDelta.cls}">${revDelta.text}</span>
+        </div>
+        <div class="tp-l2-cell">
+          <span class="tp-l2-label def-tip" data-def="Валовая прибыль">ВП</span>
+          <span class="tp-l2-val pos">${p.gp}</span>
+          <span class="tp-delta ${gpDelta.cls}">${gpDelta.text}</span>
+        </div>
+        <div class="tp-l2-cell">
+          <span class="tp-l2-label">Продано</span>
+          <span class="tp-l2-val">${p.units}</span>
+          <span class="tp-delta ${unitsDelta.cls}">${unitsDelta.text}</span>
+        </div>
+        <div class="tp-l2-cell">
+          <span class="tp-l2-label">Маржинал.</span>
+          <span class="tp-l2-val">${p.margin}</span>
+          <span class="tp-delta ${marginDelta.cls}">${marginDelta.text}</span>
+        </div>
+        <div class="tp-l2-cell">
+          <span class="tp-l2-label">Возвраты</span>
+          <span class="tp-l2-val ${refund.cls}">${refund.text}</span>
+          <span class="tp-delta ${refund.delta.cls}">${refund.delta.text}</span>
+        </div>
+      </div>
+    `;
+    const refEl = row.querySelector('.tp-l2-cell:last-child .tp-l2-val');
+    const tip = document.getElementById('tooltip');
+    refEl.addEventListener('mouseenter', () => {
+      const cur = p.sales ? `возвраты ${p.refunds} из ${p.sales} продаж` : `возвраты ${p.refunds}`;
+      const prev = p.prevSales ? ` · было ${p.prevRefunds} из ${p.prevSales}` : '';
+      tip.textContent = p.refunds===0 ? 'возвратов не было' : `${cur}${prev} · ${fmtMoney(p.refundValue)}`;
+      tip.classList.add('show');
+    });
+    refEl.addEventListener('mousemove', e => {
+      tip.style.left = e.clientX + 12 + 'px'; tip.style.top = e.clientY - 28 + 'px';
+    });
+    refEl.addEventListener('mouseleave', () => tip.classList.remove('show'));
+    c.appendChild(row);
+  });
+}
+
+// ===== RENDER TREND CHART =====
+function renderTrend(metric){
+  const body = document.getElementById('trend-body');
+  const days = ['14.09','15.09','16.09','17.09','18.09','19.09','20.09','21.09','22.09','23.09'];
+  let data, prevData, color, unit;
+  if(metric==='revenue'){ data=[820,950,880,1100,1050,1200,1150,1300,1250,1400]; prevData=[780,820,790,880,920,950,980,1020,980,1100]; color=TAB_COLORS[0]; unit='тыс ₽'; }
+  else if(metric==='gp'){ data=[270,310,290,380,350,420,390,450,430,480]; prevData=[250,270,260,300,310,320,330,350,340,380]; color=TAB_COLORS[1]; unit='тыс ₽'; }
+  else { data=[12,15,14,18,16,20,19,22,21,24]; prevData=[10,11,12,13,14,15,14,16,15,17]; color=TAB_COLORS[2]; unit=''; }
+
+  // График растянут на всю область карточки: viewBox равен реальным пиксельным
+  // размерам контейнера, поэтому нет letterbox-полей и нет скролла.
+  const box=body.getBoundingClientRect();
+  const W=Math.max(320,Math.round(box.width));
+  const H=Math.max(220,Math.round(box.height));
+  const padL=48,padR=16,padT=16,padB=32;
+  const chartW=W-padL-padR, chartH=H-padT-padB;
+  const maxVal=Math.max(...data,...prevData)*1.15;
+  const minVal=0;
+  const xStep=chartW/(days.length-1);
+  const yScale=v=>padT+chartH-(v-minVal)/(maxVal-minVal)*chartH;
+  let pathD=`M ${padL} ${yScale(data[0])}`;
+  let areaD=pathD;
+  for(let i=1;i<data.length;i++){ pathD+=` L ${padL+xStep*i} ${yScale(data[i])}`; areaD+=` L ${padL+xStep*i} ${yScale(data[i])}`; }
+  areaD+=` L ${padL+chartW} ${padT+chartH} L ${padL} ${padT+chartH} Z`;
+  let prevPath=`M ${padL} ${yScale(prevData[0])}`;
+  for(let i=1;i<prevData.length;i++){ prevPath+=` L ${padL+xStep*i} ${yScale(prevData[i])}`; }
+
+  // Y axis labels
+  let yLabels='';
+  for(let i=0;i<=4;i++){ const v=maxVal/4*i; const y=padT+chartH-(v/maxVal)*chartH; yLabels+=`<text x="${padL-8}" y="${y+4}" text-anchor="end" fill="#9ca3af" font-size="10">${Math.round(v)}${unit?'':'шт'}</text>`; }
+  // X axis labels
+  let xLabels='';
+  for(let i=0;i<days.length;i++){ xLabels+=`<text x="${padL+xStep*i}" y="${H-10}" text-anchor="middle" fill="#9ca3af" font-size="10">${days[i]}</text>`; }
+  // Grid
+  let grid='';
+  for(let i=0;i<=4;i++){ const y=padT+(chartH/4)*i; grid+=`<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="#f0f1f3" stroke-width="1"/>`; }
+
+  body.innerHTML = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" style="display:block;width:100%;height:100%">
+    ${grid}${yLabels}${xLabels}
+    <path d="${prevPath}" fill="none" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.6"/>
+    <path d="${areaD}" fill="${color}" fill-opacity="0.12"/>
+    <path d="${pathD}" fill="none" stroke="${color}" stroke-width="2.5"/>
+    ${data.map((v,i)=>`<circle cx="${padL+xStep*i}" cy="${yScale(v)}" r="3" fill="${color}"/>`).join('')}
+    <line id="trend-cursor" x1="0" y1="${padT}" x2="0" y2="${padT+chartH}" stroke="${color}" stroke-width="1" opacity="0" stroke-dasharray="3 3"/>
+  </svg>`;
+}
+
+// Tooltip для динамики — делегирование на контейнере: строки перерисовываются
+// при смене метрики, слушатели на самих элементах терялись бы.
+(function(){
+  const box = document.getElementById('dyn-body');
+  box.addEventListener('mouseover',e=>{
+    const row = e.target.closest('[data-tip]');
+    if(!row) return;
+    const tip=document.getElementById('tooltip');
+    tip.textContent=row.dataset.tip;
+    tip.classList.add('show');
+  });
+  box.addEventListener('mousemove',e=>{
+    const tip=document.getElementById('tooltip');
+    if(!tip.classList.contains('show')) return;
+    tip.style.left=e.clientX+12+'px';
+    tip.style.top=e.clientY-28+'px';
+  });
+  box.addEventListener('mouseout',e=>{
+    if(e.target.closest('[data-tip]')) document.getElementById('tooltip').classList.remove('show');
+  });
+})();
+
+// ===== RENDER CATEGORIES DONUT + LEGEND =====
+// Топ-10 категорий. Итоги сведены с KPI-рядом:
+// Σ rev = 12 400 тыс ₽ (Выручка), Σ gp = 4 200 тыс ₽ (Валовая прибыль).
+// prev* — предыдущий сопоставимый период (для Δ по каждому параметру).
+// sales — число продаж, содержащих категорию (сделка может попадать в несколько
+// категорий, поэтому Σ sales > Sales Count периода).
+const categories = [
+  {name:'Дроны',          color:'#3b82f6', rev:4200, gp:1484, sales:72, prevRev:3700, prevGp:1250, prevSales:64},
+  {name:'Камеры',         color:'#10b981', rev:2600, gp:884,  sales:84, prevRev:2300, prevGp:770,  prevSales:78},
+  {name:'Стабилизаторы',  color:'#f59e0b', rev:1400, gp:476,  sales:24, prevRev:1300, prevGp:430,  prevSales:22},
+  {name:'Аудио',          color:'#8b5cf6', rev:900,  gp:306,  sales:28, prevRev:950,  prevGp:320,  prevSales:30},
+  {name:'Аксессуары',     color:'#06b6d4', rev:800,  gp:272,  sales:96, prevRev:700,  prevGp:230,  prevSales:88},
+  {name:'Сервис',         color:'#6b7280', rev:700,  gp:238,  sales:45, prevRev:650,  prevGp:210,  prevSales:42},
+  {name:'Батареи',        color:'#ec4899', rev:600,  gp:180,  sales:60, prevRev:550,  prevGp:160,  prevSales:54},
+  {name:'Крепления',      color:'#84cc16', rev:500,  gp:150,  sales:38, prevRev:520,  prevGp:158,  prevSales:40},
+  {name:'Чехлы и сумки',  color:'#f97316', rev:400,  gp:120,  sales:52, prevRev:380,  prevGp:112,  prevSales:48},
+  {name:'Прочее',         color:'#d1d5db', rev:300,  gp:90,   sales:22, prevRev:350,  prevGp:105,  prevSales:26},
+];
+
+const CATEGORY_METRICS = {
+  revenue:{totalLabel:'Выручка', cur:c=>c.rev, prev:c=>c.prevRev},
+  gp:     {totalLabel:'ВП',      cur:c=>c.gp,  prev:c=>c.prevGp}
+};
+
+// Δ: стрелка + знак + единица; null (пустая база) → «—» серым
+function deltaCell(v, unit){
+  if(v===null||v===undefined||!isFinite(v)) return {text:'—', cls:'flat'};
+  const arrow = v>0?'\u25B2':(v<0?'\u25BC':'');
+  const txt = unit==='pts' ? fmtPts(v) : fmtSignedPct(v);
+  return {text:`${arrow} ${txt}`.trim(), cls: v>0?'up':(v<0?'down':'flat')};
+}
+function relPct(cur,prev){ return prev===0 ? null : (cur-prev)/prev*100; }
+
+function renderCategories(metric){
+  const m = CATEGORY_METRICS[metric];
+  const body = document.getElementById('cat-body');
+
+  const list = [...categories].sort((a,b)=>m.cur(b)-m.cur(a));
+  const total = list.reduce((s,c)=>s+m.cur(c),0);
+
+  // --- Donut: доли по активной метрике, порядок = порядок легенды ---
+  const cx=100,cy=100,r=78,rIn=48;
+  let acc=0, segments='';
+  list.forEach(c=>{
+    const a1 = acc/total*360, a2 = (acc+m.cur(c))/total*360;
+    acc += m.cur(c);
+    const P=(ang,rad)=>{const a=(ang-90)*Math.PI/180;return [cx+rad*Math.cos(a),cy+rad*Math.sin(a)];};
+    const [x1,y1]=P(a1,r),[x2,y2]=P(a2,r),[xi1,yi1]=P(a1,rIn),[xi2,yi2]=P(a2,rIn);
+    const large=(a2-a1)>180?1:0;
+    segments+=`<path class="donut-seg" data-name="${c.name}"
+      d="M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} L ${xi2} ${yi2} A ${rIn} ${rIn} 0 ${large} 0 ${xi1} ${yi1} Z"
+      fill="${c.color}"></path>`;
+  });
+
+  const donutHTML = `<div class="donut-wrap">
+    <svg viewBox="0 0 200 200" style="width:min(260px,100%);height:auto">${segments}
+      <text class="donut-center-label def-tip" x="100" y="92" text-anchor="middle"
+        data-def="${m.totalLabel==='ВП'?'Валовая прибыль':'Выручка'}">${m.totalLabel}</text>
+      <text class="donut-center-value" x="100" y="114" text-anchor="middle">${fmtMoney(total*1000)}</text>
+    </svg>
+  </div>`;
+
+  // --- Легенда-таблица: топ-10, у каждого параметра своя Δ ---
+  let legend = `<div class="cat-legend-wrap"><table class="tbl">
+    <thead><tr>
+      <th>Категория</th>
+      <th>Выручка<span class="th-unit">млн ₽</span></th>
+      <th><span class="def-tip" data-def="Валовая прибыль">ВП</span><span class="th-unit">млн ₽</span></th>
+      <th>Маржа</th>
+      <th>Продажи</th>
+    </tr></thead><tbody>`;
+
+  list.forEach(c=>{
+    const margin = c.rev===0 ? null : c.gp/c.rev*100;
+    const prevMargin = c.prevRev===0 ? null : c.prevGp/c.prevRev*100;
+    const dRev = deltaCell(relPct(c.rev,c.prevRev),'pct');
+    const dGp  = deltaCell(relPct(c.gp,c.prevGp),'pct');
+    // Δ маржи — в процентных пунктах (domain.md, «Изменение к предыдущему периоду»)
+    const dMrg = (margin===null||prevMargin===null) ? deltaCell(null,'pts') : deltaCell(margin-prevMargin,'pts');
+    const dSal = deltaCell(relPct(c.sales,c.prevSales),'pct');
+    legend += `<tr class="legend-row" data-name="${c.name}">
+      <td><span class="cat-name"><span class="cat-dot" style="background:${c.color}"></span>${c.name}</span></td>
+      <td><div class="cell-line"><span class="cell-val">${(c.rev/1000).toFixed(1).replace('.',',')}</span><span class="cell-delta d ${dRev.cls}">${dRev.text}</span></div></td>
+      <td><div class="cell-line"><span class="cell-val">${(c.gp/1000).toFixed(1).replace('.',',')}</span><span class="cell-delta d ${dGp.cls}">${dGp.text}</span></div></td>
+      <td><div class="cell-line"><span class="cell-val">${margin===null?'—':fmtPct(margin)}</span><span class="cell-delta d ${dMrg.cls}">${dMrg.text}</span></div></td>
+      <td><div class="cell-line"><span class="cell-val">${c.sales}</span><span class="cell-delta d ${dSal.cls}">${dSal.text}</span></div></td>
+    </tr>`;
+  });
+  legend += `</tbody></table><div class="fade-bot"></div></div>`;
+
+  body.innerHTML = donutHTML + legend;
+
+  // --- Hover-связь donut ↔ легенда ---
+  const segs = body.querySelectorAll('.donut-seg');
+  const rows = body.querySelectorAll('.legend-row');
+  const highlight = name=>{
+    segs.forEach(s=>s.style.opacity = s.dataset.name===name ? '1' : '0.35');
+    rows.forEach(rw=>rw.style.background = rw.dataset.name===name ? '#f0f7ff' : '');
+  };
+  const reset = ()=>{ segs.forEach(s=>s.style.opacity='1'); rows.forEach(rw=>rw.style.background=''); };
+  segs.forEach(s=>{ s.addEventListener('mouseenter',()=>highlight(s.dataset.name)); s.addEventListener('mouseleave',reset); });
+  rows.forEach(rw=>{ rw.addEventListener('mouseenter',()=>highlight(rw.dataset.name)); rw.addEventListener('mouseleave',reset); });
+}
+
+// ===== RENDER MANAGER COMPARISON =====
+// Оси развёрнуты: менеджеры по Y, метрика по X — длинные имена и значения
+// читаются без поворота подписей. Ростер — топ-10 менеджеров по активной метрике
+// (по убыванию), поэтому при переключении табов меняются и состав, и порядок строк.
+// Пара метрик та же, что в «Рейтинге менеджеров» (Валовая прибыль / Средний чек),
+// выводится по одной, на своей шкале. Единицы подписываются на оси X и в tooltip.
+const COMP_METRICS = {
+  gp: {label:'Валовая прибыль', color:TAB_COLORS[0], unit:'млн ₽',
+       cur:m=>m.gpNum, prev:m=>m.prevGpNum, val:m=>m.gp, fmt:v=>v.toFixed(1)},
+  ac: {label:'Средний чек', color:TAB_COLORS[1], unit:'тыс ₽',
+       cur:m=>m.acNum, prev:m=>m.prevAcNum, val:m=>m.ac, fmt:v=>v.toFixed(0)}
+};
+
+function renderComparison(mode){
+  const mm=COMP_METRICS[mode];
+  const body=document.getElementById('comp-body');
+  const top10=[...managers].sort((a,b)=>mm.cur(b)-mm.cur(a)).slice(0,10);
+  const box=body.getBoundingClientRect();
+  const W=Math.max(320,Math.round(box.width));
+  const H=Math.max(240,Math.round(box.height));
+  const padL=88,padR=16,padT=10,padB=34;
+  // Полоса справа под дельты: столбцы сжимаются, чтобы подпись не выезжала за карточку
+  const deltaW=60;
+  const chartW=W-padL-padR-deltaW, chartH=H-padT-padB;
+  const maxVal=Math.max(...top10.map(mm.cur))*1.15;
+  const groupH=chartH/top10.length;
+  const barH=18;
+
+  // X axis (значение метрики) + вертикальная сетка
+  let xLabels='',grid='';
+  for(let i=0;i<=5;i++){
+    const v=maxVal/5*i;
+    const x=padL+(v/maxVal)*chartW;
+    xLabels+=`<text x="${x}" y="${H-16}" text-anchor="middle" fill="#9ca3af" font-size="10">${mm.fmt(v)}</text>`;
+    grid+=`<line x1="${x}" y1="${padT}" x2="${x}" y2="${padT+chartH}" stroke="#f0f1f3" stroke-width="1"/>`;
+  }
+  xLabels+=`<text x="${padL-10}" y="${H-16}" text-anchor="end" fill="#9ca3af" font-size="9">${mm.unit}</text>`;
+
+  // Столбец на менеджера + подпись + Δ справа
+  let bars='',yLabels='',deltas='';
+  top10.forEach((m,i)=>{
+    const cy=padT+groupH*i+groupH/2;
+    const w=(mm.cur(m)/maxVal)*chartW;
+    const y=cy-barH/2;
+    const d=fmtDelta(relDelta(mm.cur(m), mm.prev(m)));
+    bars+=`<rect x="${padL}" y="${y}" width="${w}" height="${barH}" fill="${mm.color}" rx="3" class="comp-bar" data-tip="${m.name} · ${mm.label} ${mm.val(m)} · Δ ${d.text}" style="cursor:pointer;transition:opacity .2s"/>`;
+    yLabels+=`<text x="${padL-10}" y="${cy-2}" text-anchor="end" fill="#4b5563" font-size="11" font-weight="600">${m.name}</text>`;
+    yLabels+=`<text x="${padL-10}" y="${cy+11}" text-anchor="end" fill="#9ca3af" font-size="9">${m.team}</text>`;
+    deltas+=`<text x="${padL+w+6}" y="${cy+3.5}" class="comp-delta ${d.cls}">${d.text}</text>`;
+  });
+
+  // Метрика задаётся табами в шапке карточки, под графиком легенды нет
+  body.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" style="display:block;width:100%;height:${H}px">
+    ${grid}${xLabels}
+    ${bars}
+    ${deltas}
+    ${yLabels}
+  </svg>`;
+
+  // Tooltip
+  body.querySelectorAll('.comp-bar').forEach(bar=>{
+    bar.addEventListener('mouseenter',e=>{
+      const tip=document.getElementById('tooltip');
+      tip.textContent=bar.dataset.tip;
+      tip.classList.add('show');
+    });
+    bar.addEventListener('mousemove',e=>{
+      const tip=document.getElementById('tooltip');
+      tip.style.left=e.clientX+12+'px';
+      tip.style.top=e.clientY-28+'px';
+    });
+    bar.addEventListener('mouseleave',()=>document.getElementById('tooltip').classList.remove('show'));
+  });
+}
+
+// ===== RENDER RECENT SALES =====
+// Строка 1 — данные о сделке, статус прижат вправо. Строка 2 — количество
+// и обе суммы одним рядом: табличных заголовков нет, поэтому единицы
+// печатаются в значении (385 тыс ₽), как в источнике recent-sales-card.html.
+function renderSales(){
+  const list=document.getElementById('sales-list');
+  const rows = recentSales;
+  list.innerHTML = rows.length
+    ? rows.map(s=>`
+      <div class="sale-item">
+        <div class="sale-head">
+          <span class="sale-client">${s.client}</span>
+          <span class="sale-manager">${s.mgr}</span>
+          <span class="sale-date">${s.date}</span>
+          <span class="badge ${s.badge} sale-badge">${s.status}</span>
+        </div>
+        <div class="sale-meta">
+          <span>${s.items}</span>
+          <span class="sep">·</span>
+          <span>Сумма <span class="val">${s.amount}</span></span>
+          <span class="sep">·</span>
+          <span>Валовая прибыль <span class="val">${s.gp}</span></span>
+        </div>
+      </div>`).join('') : []
+}
+
+// ===== RENDER LOSSES (Возвраты и Отмены — два отдельных блока, ui.md п. 8) =====
+// Только деньги. Режим «Сумма | Количество» убран: количество не является
+// предметом блока. Две группы не сводятся — у каждой свой разрез и свой итог.
+function sparkPath(vals, w, h){
+  const max = Math.max(...vals, 1);
+  return vals.map((v,i)=>
+    `${(i/(vals.length-1)*w).toFixed(1)},${(h - v/max*(h-2) - 1).toFixed(1)}`
+  ).join(' ');
+}
+
+function lossGroup(key){
+  const g = losses[key];
+  const total = g.value;
+
+  // Порядок — по убыванию суммы; доля от итога группы — монотонный множитель
+  // суммы, поэтому отдельного переключателя ранжирования нет.
+  const rows = g.top.map((it, i) => {
+    const share = it.value / total * 100;
+    const barPct = it.value / g.top[0].value * 100;
+    return `<div class="loss-row">
+        <span class="loss-rank">#${i+1}</span>
+        <span class="loss-obj">${it.name} <span class="sub">· ${it.sub}</span></span>
+        <span class="loss-bar-wrap"><span class="loss-bar" style="width:${barPct.toFixed(1)}%"></span></span>
+        <span class="loss-sum">${fmtMoney(it.value)}</span>
+        <span class="loss-share">${fmtPct(share)}</span>
+      </div>`;
+  }).join('');
+
+  // Хвост «Остальные N» печатается когда за топом остались объекты:
+  // доли строк топа плюс доля хвоста дают 100% группы.
+  const tailRow = !g.tail ? '' : `<div class="loss-row tail">
+      <span class="loss-rank"></span>
+      <span class="loss-obj">Остальные ${g.tail.count}</span>
+      <span class="loss-bar-wrap"></span>
+      <span class="loss-sum">${fmtMoney(g.tail.value)}</span>
+      <span class="loss-share">${fmtPct(g.tail.value / total * 100)}</span>
+    </div>`;
+
+  const deltaCls = g.rateDeltaPctPoints > 0 ? 'worse' : g.rateDeltaPctPoints < 0 ? 'better' : 'flat';
+  const arrow = g.rateDeltaPctPoints > 0 ? '▲' : g.rateDeltaPctPoints < 0 ? '▼' : '';
+
+  return `<div class="loss-wrap">
+    <div class="loss-top">
+      <div class="loss-big">${fmtMoney(g.value)}</div>
+      <div class="loss-rate"><span class="lbl">доля</span>${fmtPct(g.rate)}
+        <span class="loss-delta ${deltaCls}">${arrow} ${fmtPts(g.rateDeltaPctPoints)}</span>
+      </div>
+    </div>
+    <svg class="loss-spark" viewBox="0 0 200 30" preserveAspectRatio="none">
+      <polyline points="${sparkPath(g.spark,200,30)}" fill="none" stroke="${key==='refunds'?'#ef4444':'#f59e0b'}" stroke-width="1.5" vector-effect="non-scaling-stroke"/>
+    </svg>
+    <div class="loss-top-h">${key==='refunds'?'Топ товаров по сумме возвратов':'Топ менеджеров по сумме отмен'}</div>
+    <div class="loss-list">${rows}${tailRow}</div>
+  </div>`;
+}
+
+function renderLosses(){
+  document.getElementById('loss-refunds-body').innerHTML = lossGroup('refunds');
+  document.getElementById('loss-cancellations-body').innerHTML = lossGroup('cancellations');
+}
+
+// ===== EVENT HANDLERS =====
+// Клиентские карточки переключают метрику независимо: у «Клиентов — Топ-10» и
+// «Динамики клиентов» свои активные метрики и свои обработчики. Набор метрик
+// (Валовая прибыль / Средний чек) у обеих одинаков, но выбор не синхронизируется.
+let activeClientMetric = 'gp';
+function setClientMetric(metric){
+  activeClientMetric = metric;
+  document.querySelectorAll('#cl-seg button').forEach(b=>{
+    b.classList.toggle('active', b.dataset.metric===metric);
+  });
+  renderClients(metric);
+}
+let activeDynMetric = 'gp';
+function setDynMetric(metric){
+  activeDynMetric = metric;
+  document.querySelectorAll('#dyn-seg button').forEach(b=>{
+    b.classList.toggle('active', b.dataset.metric===metric);
+  });
+  renderClientDynamics(metric);
+}
+document.getElementById('cl-seg').addEventListener('click',e=>{
+  if(e.target.tagName==='BUTTON') setClientMetric(e.target.dataset.metric);
+});
+document.getElementById('dyn-seg').addEventListener('click',e=>{
+  if(e.target.tagName==='BUTTON') setDynMetric(e.target.dataset.metric);
+});
+document.getElementById('lb-seg').addEventListener('click',e=>{
+  if(e.target.tagName==='BUTTON'){
+    document.querySelectorAll('#lb-seg button').forEach(b=>b.classList.remove('active'));
+    e.target.classList.add('active');
+    renderLB(e.target.dataset.mode);
+  }
+});
+let activeCompMetric = 'gp';
+document.getElementById('comp-seg').addEventListener('click',e=>{
+  if(e.target.tagName==='BUTTON'){
+    document.querySelectorAll('#comp-seg button').forEach(b=>b.classList.remove('active'));
+    e.target.classList.add('active');
+    activeCompMetric = e.target.dataset.mode;
+    renderComparison(activeCompMetric);
+  }
+});
+document.getElementById('tp-seg').addEventListener('click',e=>{
+  if(e.target.tagName==='BUTTON'){
+    document.querySelectorAll('#tp-seg button').forEach(b=>b.classList.remove('active'));
+    e.target.classList.add('active');
+    renderTP(e.target.dataset.mode);
+  }
+});
+let activeTrend = 'revenue';
+document.getElementById('trend-seg').addEventListener('click',e=>{
+  if(e.target.tagName==='BUTTON'){
+    document.querySelectorAll('#trend-seg button').forEach(b=>b.classList.remove('active'));
+    e.target.classList.add('active');
+    activeTrend = e.target.dataset.metric;
+    renderTrend(activeTrend);
+  }
+});
+document.getElementById('cat-seg').addEventListener('click',e=>{
+  if(e.target.tagName==='BUTTON'){
+    document.querySelectorAll('#cat-seg button').forEach(b=>b.classList.remove('active'));
+    e.target.classList.add('active');
+    renderCategories(e.target.dataset.metric);
+  }
+});
+
+// Пресеты и «Произвольный период» (ui.md, п. 1): контролы дат неактивны,
+// пока не выбран произвольный режим; пресет и from→to взаимоисключающи.
+const RANGE_TEXT = {
+  'today':['23 сент 2026','1 день'],
+  '7d':['17 сент 2026 — 23 сент 2026','7 дней'],
+  '30d':['25 авг 2026 — 23 сент 2026','30 дней'],
+  'this-month':['1 сент 2026 — 23 сент 2026','23 дня'],
+  'last-month':['1 авг 2026 — 31 авг 2026','31 день'],
+  'custom':['14 сент 2026 — 23 сент 2026','10 дней']
+};
+function applyPreset(preset){
+  document.querySelectorAll('#presets button').forEach(x=>x.classList.remove('active'));
+  const custom = document.getElementById('custom-period');
+  if(preset==='custom'){
+    custom.classList.remove('idle');
+    custom.querySelector('button').classList.add('active');
+  } else {
+    custom.classList.add('idle');
+    custom.querySelector('button').classList.remove('active');
+    const btn = document.querySelector(`#presets button[data-preset="${preset}"]`);
+    if(btn) btn.classList.add('active');
+  }
+  const [main,dur] = RANGE_TEXT[preset];
+  document.getElementById('range-main').textContent = main;
+  document.getElementById('range-dur').textContent = dur;
+}
+document.getElementById('presets').addEventListener('click',e=>{
+  if(e.target.tagName==='BUTTON') applyPreset(e.target.dataset.preset);
+});
+document.querySelector('#custom-period button').addEventListener('click',()=>applyPreset('custom'));
+
+// Tooltip по статусу: что означает сам статус
+(function bindStatusTips(){
+  const tip = document.getElementById('tooltip');
+  document.getElementById('sales-list').addEventListener('mouseover',e=>{
+    const b = e.target.closest('.badge');
+    if(!b) return;
+    tip.textContent = STATUS_NOTE[b.textContent.trim()] || '';
+    if(tip.textContent) tip.classList.add('show');
+  });
+  document.getElementById('sales-list').addEventListener('mousemove',e=>{
+    if(!tip.classList.contains('show')) return;
+    tip.style.left = e.clientX + 12 + 'px'; tip.style.top = e.clientY - 28 + 'px';
+  });
+  document.getElementById('sales-list').addEventListener('mouseleave',()=>tip.classList.remove('show'));
+})();
+
+// Расшифровка сокращений (ВП) при наведении — общий тултип.
+// Делегирование от document: блоки рейтинга/продуктов/категорий перерисовываются,
+// поэтому вешать обработчики на сами узлы нельзя.
+(function bindDefTips(){
+  const tip = document.getElementById('tooltip');
+  document.addEventListener('mouseover',e=>{
+    const el = e.target.closest('[data-def]');
+    if(!el) return;
+    tip.textContent = el.dataset.def;
+    tip.classList.add('show');
+  });
+  document.addEventListener('mousemove',e=>{
+    if(!tip.classList.contains('show')) return;
+    tip.style.left = e.clientX + 12 + 'px'; tip.style.top = e.clientY - 28 + 'px';
+  });
+  document.addEventListener('mouseout',e=>{
+    if(e.target.closest('[data-def]')) tip.classList.remove('show');
+  });
+})();
+
+// ===== INIT =====
+function renderCharts(){
+  renderTrend(activeTrend);
+  renderComparison(activeCompMetric);
+}
+renderLB('gp');
+setClientMetric('gp');
+setDynMetric('gp');
+renderTP('revenue');
+renderCharts();
+renderCategories('revenue');
+renderLosses();
+renderSales();
+applyPreset('7d');
+
+// График растянут на всю карточку по реальным пикселям контейнера —
+// при изменении размера окна пересчитываем геометрию.
+window.addEventListener('resize',()=>{
+  renderCharts();
+  renderClientDynamics(activeDynMetric);
+});
+</script>
+</body>
+</html>
