@@ -52,9 +52,9 @@ REST API дашборда аналитики продаж. Все вычисле
 | `DeltaUnit` | `1` | `percent` — относительная Δ, суффикс `%` |
 | | `2` | `pp` — дельта доли, суффикс `п.п.` |
 | `ContributionUnit` | `1` | `gp` — «от ВП» |
-| | `2` | `ac` — «× к СЧ» |
-| | `3` | `revenue` — «от выручки» |
-| | `4` | `units` — «от объёма» |
+| | `2` | `revenue` — «от выручки» |
+| | `3` | `units` — «от объёма» |
+| | `4` | `ac` — «× к СЧ» |
 | `SaleStatus` | `1` | `paid` — оплачена |
 | | `2` | `refunded` — возврат |
 | | `3` | `cancelled` — отменена |
@@ -85,8 +85,9 @@ REST API дашборда аналитики продаж. Все вычисле
 | `segment` | `enum Segment` | ➖ | Фильтр по сегменту клиента. Отсутствует или `null` = все сегменты |
 
 **Валидация:** `from`, `to` — обязательные `datetime`, `from <= to`; `segment` — только
-значения enum. Невалидное значение поля приравнивается к `null`. Пустой или невалидный
-период **не допускается** — сервер отвечает `400` с `ProblemDetails` (см. «Ошибки»).
+значения enum (`1`, `2`, `3`), значение вне набора — `400` (`SEGMENT_INVALID`). Пустой
+или невалидный период **не допускается** — сервер отвечает `400` с `ProblemDetails`
+(см. «Ошибки»).
 
 **Предыдущий сопоставимый период вычисляется сервером** по правилам `domain.md` из
 `from`/`to` и в запросе не передаётся.
@@ -548,12 +549,12 @@ API возвращает **полный отсортированный спис�
 
 ### `400` — невалидный запрос
 
-| Случай | `detail` |
-|---|---|
-| `from`/`to` отсутствуют, `null` или невалидны | `Field 'from' is required` |
-| `from > to` | `'from' must be earlier than or equal to 'to'` |
-| `segment` вне enum | `Field 'segment' must be one of: 1, 2, 3` |
-| Невалидный JSON тела запроса | `Request body is not valid JSON` |
+| Случай | `code` в `errors[]` | `detail` |
+|---|---|---|
+| `from`/`to` отсутствуют, `null` или невалидны | `PERIOD_REQUIRED` | `Field 'from' is required` |
+| `from > to` | `PERIOD_INVALID_ORDER` | `'from' must be earlier than or equal to 'to'` |
+| `segment` вне enum | `SEGMENT_INVALID` | `Field 'segment' must be one of: 1, 2, 3` |
+| Невалидный JSON тела запроса | — (массив `errors` не формируется) | `Request body is not valid JSON` |
 
 ```json
 {

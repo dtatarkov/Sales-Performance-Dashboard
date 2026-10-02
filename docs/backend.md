@@ -41,14 +41,14 @@ Domain не держит сущностей: stateless-сервисы работ
 
 ```
 backend/
+  SalesDashboard.sln
   SalesDashboard.Domain/            # ядро, 0 зависимостей
   SalesDashboard.Application/       # сценарии, порты, read models
   SalesDashboard.Infrastructure/    # EF Core, реализации портов чтения, seed
   SalesDashboard.Api/               # контроллер, DTO, валидация, api mappers, DI
-tests/
-  SalesDashboard.Domain.Tests
-  SalesDashboard.Application.Tests
-  SalesDashboard.Api.Tests          # интеграционные (WebApplicationFactory)
+  SalesDashboard.Domain.Tests/      # юнит-тесты домена
+  SalesDashboard.Application.Tests/ # юнит-тесты builder'ов
+  SalesDashboard.Api.Tests/         # интеграционные (WebApplicationFactory)
 ```
 
 ```
@@ -373,9 +373,10 @@ OpenAPI-документацией): `200` — `DashboardDto`, `400` — `Proble
 — библиотека не убрала бы работу, а добавила зависимость и слой (против
 `specification.md`, §7, §20).
 
-Правила: `from`/`to` обязательны и валидны; `from <= to` (`PERIOD_INVALID_ORDER`);
-`segment` входит в enum (`SEGMENT_INVALID`) — проверка через `Enum.IsDefined`, т.к.
-сериализатор числа не валидирует (§6.2). Валидатор возвращает список ошибок
+Правила: `from`/`to` обязательны и валидны (`PERIOD_REQUIRED`); `from <= to`
+(`PERIOD_INVALID_ORDER`); `segment` входит в enum (`SEGMENT_INVALID`) — проверка
+через `Enum.IsDefined`, т.к. сериализатор числа не валидирует (§6.2). Валидатор
+возвращает список ошибок
 `(field, code, message)`, контроллер на их основе формирует `400` с `ProblemDetails`
 (`api.md`, «Ошибки»). Невалидный JSON отсекает input formatter до валидатора
 (`Request body is not valid JSON`).
@@ -428,7 +429,9 @@ middleware, синхронно расширив `api.md`.
 ### 6.7 Composition root
 
 `Program.cs` + extension-методы `AddApplication()`, `AddInfrastructure(config)`,
-`AddApi()`; регистрация use case, builder'ов, реализаций портов, мапперов.
+`AddApi()`; регистрация use case, builder'ов, реализаций портов, мапперов. OpenAPI
+генерируется из `[ProducesResponseType]`/DTO и отдаётся интерактивным Swagger UI
+(`Swashbuckle.AspNetCore`, `/swagger`) для ручной проверки контракта `api.md`.
 
 ---
 
