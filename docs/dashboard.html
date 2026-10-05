@@ -601,11 +601,9 @@ body{font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background
 
 <script>
 // ===== DATA =====
-// Константы внимания — синхронизированы с domain.md, «Константы внимания».
+// Минимальные размеры выборки — синхронизированы с domain.md, «Константы внимания».
 // В вёрстке числа не дублируются: все пороги читаются из этого объекта.
 const THRESHOLDS = {
-  refundAttention: 5,      // Refund Attention Threshold, %
-  cancelAttention: 5,      // Cancellation Attention Threshold, %
   refundMinSample: 8,      // Refund Min Sample, продаж по товару
   cancelMinSample: 5,      // Cancellation Min Sample, созданных сделок по менеджеру
   dynMinBaseOrders: 5,     // минимум заказов в базовом периоде для «Динамики клиентов»
@@ -859,13 +857,12 @@ const CLIENT_METRICS = {
        fmt:v=>fmtMoney(v*1000), unit:'к среднему чеку'}
 };
 
-// Доля возвратов/отмен: печатается всегда, порог включает только акцент.
+// Доля возвратов/отмен: печатается всегда, порога внимания нет.
 // Знаменатель возвратов — продажи клиента Paid+Refunded, отмен — все его сделки.
-function rateInfo(count, base, threshold, minSample){
+function rateInfo(count, base, minSample){
   if(count===0) return {text:'нет', cls:'muted'};
   if(base < minSample) return {text:'мало данных', cls:'muted'};
-  const rate = count/base*100;
-  return {text:fmtPct(rate), cls: rate>=threshold ? 'warn' : ''};
+  return {text:fmtPct(count/base*100), cls:''};
 }
 
 // ===== RENDER CLIENTS TOP-10 (1/2) =====
@@ -892,8 +889,8 @@ function renderClients(mode){
     const cancelBase = c.orders + c.refunds + c.cancels;
     const prevCancelBase = c.prevOrders + c.prevRefunds + c.prevCancels;
 
-    const refund = rateInfo(c.refunds, refundBase, THRESHOLDS.refundAttention, THRESHOLDS.refundMinSample);
-    const cancel = rateInfo(c.cancels, cancelBase, THRESHOLDS.cancelAttention, THRESHOLDS.cancelMinSample);
+    const refund = rateInfo(c.refunds, refundBase, THRESHOLDS.refundMinSample);
+    const cancel = rateInfo(c.cancels, cancelBase, THRESHOLDS.cancelMinSample);
     const refundDelta = badDelta(rate(c.refunds,refundBase), rate(c.prevRefunds,prevRefundBase),
       THRESHOLDS.refundMinSample, refundBase);
     const cancelDelta = badDelta(rate(c.cancels,cancelBase), rate(c.prevCancels,prevCancelBase),
@@ -1023,14 +1020,13 @@ function renderClientDynamics(mode){
 
 
 // ===== RENDER LEADERBOARD (одноколоночный, span 6) =====
-// Доля отмен — полем уровня 2 (порог и минимальная выборка — из «Констант
-// внимания»): «нет» при реальном нуле, «мало данных» ниже выборки, «—» без сделок.
+// Доля отмен — полем уровня 2 (минимальная выборка — из «Констант внимания»):
+// «нет» при реальном нуле, «мало данных» ниже выборки, «—» без сделок.
 function cancelField(m){
   if(m.created===0) return {text:'—', cls:'muted'};
   if(m.cancels===0) return {text:'нет', cls:'muted'};
   if(m.created < THRESHOLDS.cancelMinSample) return {text:'мало данных', cls:'muted'};
-  const r = m.cancels/m.created*100;
-  return {text:fmtPct(r), cls: r>=THRESHOLDS.cancelAttention ? 'warn' : ''};
+  return {text:fmtPct(m.cancels/m.created*100), cls:''};
 }
 
 function renderLB(mode){
@@ -1134,7 +1130,7 @@ function refundField(p){
   }
   if(p.refunds===0) return {text:'нет', cls:'muted', delta};
   if(p.sales < THRESHOLDS.refundMinSample) return {text:'мало данных', cls:'muted', delta};
-  return {text:fmtPct(rate), cls: rate>=THRESHOLDS.refundAttention ? 'warn' : '', delta};
+  return {text:fmtPct(rate), cls:'', delta};
 }
 
 function renderTP(mode){

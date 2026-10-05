@@ -83,13 +83,11 @@ stateless-сервисы, считающие метрики из query-rows. Д�
 
 | Тип | Вид | Смысл |
 |---|---|---|
-| `Money` | value object (`decimal Amount`) | Денежное значение `numeric(18,2)`, арифметика |
-| `DateRange` | value object (`From`, `To`, границы включительно) | Активный период; инвариант `From ≤ To` держит guard clause в конструкторе |
-| `CustomerSegment` | enum | `Enterprise = 1`, `MidMarket = 2`, `Smb = 3` |
+| `DateRange` | value object (`From`, `To`, полуинтервал `[From, To)`) | Активный период; инвариант `From < To` держит guard clause в конструкторе |
+| `CustomerSegment` | enum | `Enterprise = 1`, `MidMarket = 2`, `Smb = 3` (`SMB` — small and medium business, малый и средний бизнес) |
 | `SaleStatus` | enum | `Paid = 1`, `Refunded = 2`, `Cancelled = 3` |
-| `RankingMetric` | enum | `GrossProfit`, `AverageCheck` (внутренний, в JSON не выходит) |
 | `ContributionBasis` | enum | `GrossProfit = 1`, `Revenue = 2`, `Units = 3`, `AverageCheck = 4` |
-| `MetricThresholds` | value object | константы `domain.md`: `RefundMinSample`, `CancellationMinSample`, `DynMinBaseOrders`, `DynTopN`, пороги внимания |
+| `MetricThresholds` | value object | константы `domain.md`: `RefundMinSample`, `CancellationMinSample`, `DynMinBaseOrders`, `DynTopN` |
 
 Числовые значения enum'ов, попадающих в JSON, — часть контракта `api.md`. Они заданы
 явно (`= 1, = 2, …`), чтобы перестановка членов не сломала wire-формат, и закреплены
@@ -124,7 +122,7 @@ stateless-сервисы, считающие метрики из query-rows. Д�
 
 Доменных исключений нет. Невалидный период отсекается на границе API
 (`DashboardRequestValidator` → `400`, `api.md`) и до домена не доходит. Дополнительно
-`DateRange` защищён guard clause в конструкторе: попытка создать его с `From > To`
+`DateRange` защищён guard clause в конструкторе: попытка создать его с `From >= To`
 бросает стандартное `ArgumentException`. Это техническая защита от ошибочного
 вызова, а не доменное исключение, поэтому `GlobalExceptionHandler` её не
 обрабатывает (такой вызов — баг, а не пользовательский ввод). Для read-only
@@ -373,13 +371,15 @@ OpenAPI-документацией): `200` — `DashboardDto`, `400` — `Proble
 — библиотека не убрала бы работу, а добавила зависимость и слой (против
 `specification.md`, §7, §20).
 
-Правила: `from`/`to` обязательны и валидны (`PERIOD_REQUIRED`); `from <= to`
+Правила: `from`/`to` обязательны и валидны (`PERIOD_REQUIRED`); `from < to`
 (`PERIOD_INVALID_ORDER`); `segment` входит в enum (`SEGMENT_INVALID`) — проверка
 через `Enum.IsDefined`, т.к. сериализатор числа не валидирует (§6.2). Валидатор
 возвращает список ошибок
-`(field, code, message)`, контроллер на их основе формирует `400` с `ProblemDetails`
-(`api.md`, «Ошибки»). Невалидный JSON отсекает input formatter до валидатора
-(`Request body is not valid JSON`).
+`(field, code, message)`, а `ValidationProblemFactory` (слой Api) на их основе
+формирует `400` с `ProblemDetails`
+(`api.md`, «Ошибки»). Невалидный JSON отсекает input formatter до валидатора —
+отдаётся стандартный `400` фреймворка (`ValidationProblemDetails`), отдельного
+маппинга в контракт не пишется.
 
 ### 6.4 Мапперы API
 

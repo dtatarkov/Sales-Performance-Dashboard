@@ -55,7 +55,7 @@ PostgreSQL. ORM — Entity Framework Core (Code First, миграции). Все
 | `id` | `uuid` | PK | Уникальный идентификатор |
 | `name` | `varchar(200)` | NOT NULL | Название клиента |
 | `company` | `varchar(200)` | NOT NULL | Компания |
-| `segment` | `smallint` | NOT NULL | Сегмент: `1` = Enterprise, `2` = Mid-market, `3` = SMB |
+| `segment` | `smallint` | NOT NULL | Сегмент: `1` = Enterprise, `2` = Mid-market, `3` = SMB (small and medium business, малый и средний бизнес) |
 | `since` | `smallint` | NOT NULL | Год начала работы с клиентом |
 
 **Индексы:**
