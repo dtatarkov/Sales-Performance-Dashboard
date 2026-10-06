@@ -39,13 +39,13 @@ TanStack Query (кэш, stale-while-revalidate). Контракты слоёв �
 
 | Слой | Роль | Может | Не может |
 |---|---|---|---|
-| `pages` (папка `app/`) | Страница: маршруты Next.js, композиция виджетов, провайдеры | `layout.tsx`/`page.tsx`, `next/navigation`, провайдер `DashboardQuery`-контекста, хуки `hooks/app` | Импортировать `components`, `api`, доменные/UI-хуки; рендерить контент блоков, вызывать API, знать DTO |
+| `pages` (папка `app/`) | Страница: маршруты Next.js, композиция виджетов, провайдеры | `layout.tsx`/`page.tsx`, `next/navigation`, провайдер `DashboardQuery`-контекста из `contexts/`, хуки `hooks/app` | Импортировать `components`, `api`, доменные/UI-хуки; рендерить контент блоков, вызывать API, знать DTO |
 | `widgets` | Блоки `ui.md` (1 блок = 1 виджет) + инфраструктурные виджеты страницы (toolbar, toasts) | Доменные хуки (`hooks/domain`), app-хуки (`hooks/app`), UI-хуки (`hooks/ui`), локальные состояния, конфиг блока | Импортировать `api/*`, `next/*`, вызывать fetch, знать о кэше |
-| `hooks` | Хуки приложения: `app/` — граница URL, `ui/` — логика представления, `domain/` — доступ к данным | Читать `DashboardQuery` из контекста, управлять кэшем, `useDisclosure`, `useAnimatedCounter` | Содержать JSX, форматировать значения, считать метрики |
+| `hooks` | Хуки приложения: `app/` — граница URL, `ui/` — логика представления, `domain/` — доступ к данным | Читать `DashboardQuery` из контекста (`contexts/`), управлять кэшем, `useDisclosure` (open/close/toggle), `useAnimatedCounter` | Содержать JSX, форматировать значения, считать метрики |
 | `components` | Render-only элементы: примитивы, элементы данных, графики | Props in → JSX out, форматирование, анимации, UI-хуки (`hooks/ui`) | Обращаться к доменным и app-хукам (`hooks/domain`, `hooks/app`), `api`, URL, контекстам |
 | `api` | Детали API за хуками: HTTP-клиент, типы DTO `api.md`, маппинг DTO → app-типы | POST-запрос, приведение enum'ов, типизация ошибок | Знать о React, кэше и состояниях UI |
-| `utils` | Чистые хелперы без React и домена | Форматирование чисел/дат, раскрытие границ дня, общие функции (`formatDate`, `clamp`) | React, состояние, домен, константы, URL-контракт |
-| `types` | Только типы данных (DTO ответов, app-типы по `ui.md`: `Delta`, `Dataset`, `Contribution`) | Объявлять структуры | Рантайм-код, значения, контракты модулей |
+| `utils` | Чистые хелперы без React и домена | Форматирование чисел/дат, раскрытие границ дня (`formatDate`, `expandDayBoundaries`) | React, состояние, домен, константы, URL-контракт |
+| `contexts` | Контекст React и провайдеры: `dashboardQueryContext` (глобальные фильтры), `queryProvider` (обёртка `QueryClientProvider` TanStack) | Создавать контекст, публиковать значение, изолировать внешних провайдеров за собственными обёртками | Знать о URL, fetch, кэше; инлайнить значения (провайдер получает готовое) |
 | `interfaces` | Публичные контракты модулей: границы, экспортируемые API (`BlockState<T>`, `DashboardQuery`) | Объявлять контракты | Реализацию, константы, рантайм-логику |
 | `configuration` | Конфигурация и константы: дефолты, пресеты, env-настройки | Типизированные константы (`DEFAULT_PERIOD_PRESET`, `DEFAULT_SEGMENT`) | Логику, расчёты, побочные эффекты |
 
@@ -61,7 +61,10 @@ frontend/src/
                         #   страница одна
   widgets/              # kpi/, manager-rating/, ..., toolbar/, toasts/ — по виджету
   hooks/                # app/, ui/, domain/ — все хуки приложения
-  api/                  # client, dto (api.md), mappers (DTO → app-типы), errors
+  contexts/             # dashboardQueryContext.tsx, queryProvider.tsx — контексты
+                        #   и провайдеры (в т.ч. обёртка QueryClientProvider TanStack)
+  api/                  # client, parsers/ (ProblemDetails, DTO-поля),
+                        #   mappers/ (enum-словари, DTO → app-типы), dashboardSource (queryFn)
   components/           # ui/, data/, charts/ — render-only (приватная библиотека виджетов);
                         #   категории ui/, data/, charts/ — по назначению элемента,
                         #   шаблонов страниц здесь нет
@@ -102,15 +105,16 @@ UI-слои — ровно четыре: `pages`, `widgets`, `hooks`, `component
 виджетов.
 
 Слои без зависимостей (используются любым слоем, но сами никого не
-импортируют): `utils`, `types`, `interfaces`, `configuration`.
+импортируют, кроме `types`/`interfaces`): `utils`, `types`, `interfaces`,
+`configuration`, `contexts`.
 
 Запреты (закрепляются правилами линтера, import boundaries):
 
-- `pages` импортирует только `widgets` и `hooks/app` (провайдер); `components`, `api`, доменные/UI-хуки — нет.
+- `pages` импортирует только `widgets`, `contexts/` (провайдер) и `hooks/app`; `components`, `api`, доменные/UI-хуки — нет.
 - `components` остаются render-only: никаких `hooks/domain/*`, `hooks/app/*`, `api`, `next/*`, URL и контекстов — только `utils`, `types`, `configuration` и `hooks/ui/*`.
 - `widgets` не импортируют `api` и `next/*`; доступ к данным — только через `hooks/domain/*`, к фильтрам — через `hooks/app/*`. Прямого доступа виджетов к `DashboardQueryContext` нет: фильтры доходят до виджета только внутри `BlockState`.
 - `hooks/ui/*` не импортируют `api`, `hooks/domain/*` и не знают о URL — чистые хуки логики представления.
-- `hooks` — только TypeScript без JSX; не импортируют `widgets` и `components`.
+- `hooks` — только TypeScript без JSX; не импортируют `widgets` и `components`. JSX и `createContext` живут только в `contexts/`.
 - `api` не импортирует React и не знает о состояниях интерфейса.
 - `utils` не импортируют React, `hooks`, `api`, `widgets`, `components` и не хранят константы — это `configuration/`.
 - `configuration` — только значения (`as const`, простые объекты); логики, расчётов и побочных эффектов здесь нет.
@@ -249,8 +253,10 @@ type PeriodPresetToolbarProps = {
 знают о странице; контекст — граница между ними, поэтому допустимо, что
 поставщик и потребитель контекста принадлежат разным слоям. Контракт
 контекста (`DashboardQueryContext`) объявлен в `interfaces/`, реализация
-провайдера — в `hooks/app`, потому что только `hooks/app` владеет
-`searchParams`.
+(контекст + провайдер + consumer-хук) — в `contexts/` — нейтральный слой без
+зависимостей: контекст — это React-инфраструктура доставки значения, а не
+хук; `searchParams` он не знает — значение приходит из `useDashboardQuery` в
+`page.tsx`.
 
 Аналогия — **инициализация контейнера**. `DashboardQueryContext` — объект
 доменного уровня (контракт в `interfaces/`), такой же, как `BlockState`:
@@ -358,7 +364,7 @@ type DashboardStatus = {
 
 Хуки для декомпозиции сложной логики представления. Доступны `widgets` и `components`; не знают о API, кэше и URL.
 
-Примеры: `useDisclosure` (раскрытие), `useAnimatedCounter` (счётчик), `useHoverGroup` (группа hover-подсветки).
+Примеры: `useDisclosure` (булево «раскрыто/скрыто» — `{ isOpen, open, close, toggle }`, состояние видимости DateRangePicker и Tooltip), `useAnimatedCounter` (счётчик), `useHoverGroup` (группа hover-подсветки).
 
 ---
 
@@ -403,6 +409,11 @@ type DashboardStatus = {
 - примитивы `ui/`: `Card`, `Badge`, `Skeleton`, `Avatar`,
   `SegmentedControl` (тулбар пресетов и сегмента собран из них в `ui/`),
   `Tooltip` (hover-логика + `@floating-ui/react-dom` для позиционирования),
+  `Popover` (поповер: `useDisclosure` + клик-вне/Escape),
+`DateRangePicker` (диапазон: наш `Popover` + `<DayPicker
+  mode="range">` из `react-day-picker` — встроенные range, hover-превью,
+  сетка месяцев; невалидный диапазон незавершаем; стилизация через
+  `classNames` + CSS-переменные),
   `Toaster` (точка настройки `<Toaster>` из sonner);
 - элементы данных `data/`: `DeltaBadge`, `ContributionBar`, `Sparkline`,
   строки списков;
@@ -609,6 +620,11 @@ animated counters, переходы графиков) — внутри `componen
   табов в localStorage/cookie тоже сознательно отвергнуто (SSR-рассинхрон
   ради второстепенной настройки) — табы живут в памяти виджета и сбрасываются
   при перезагрузке.
+- Build-time конфигурация API (`NEXT_PUBLIC_API_BASE_URL` инлайнится в бандл
+  при сборке; смена URL после build невозможна) — приемлемо только из-за
+  scope тестового задания. Для «один образ — много окружений» альтернатива:
+  относительный `/api/v1` + `rewrites`-прокси в `next.config.ts` (URL
+  определяется при запуске).
 - Мобильная адаптация (`specification.md`, §20).
 
 ---
@@ -628,7 +644,8 @@ runtime-реестров и серверных зависимостей.
 | Даты/время | `date-fns` v4 | dayjs (2 kB, но plugin-модель + свои таймзоны), luxon (23 kB, тяжёлый), Temporal (пока не stable) | Всё время-чувствительное у нас — в UTC (`domain.md`); date-fns — чистые функции, идеальные для tree-shaking (импортируем только `startOfDay`, `addDays` и т.п.), ISO-строки `YYYY-MM-DD` парсятся без сюрпризов; dayjs меньше по базовому весу, но требует плагин UTC + plugin-модель для timezone |
 | Анимации | `motion` (ex-Framer Motion) | GSAP (тяжелее, вендорная лицензия по некоторым сценариям), react-spring (устаревающая документация), CSS-анимации (не умеют exit/enter-переходы по данным) | `motion/react` — анимация по значению (counter, плавная замена контента, переходы чартов), не по таймлайну;Suspense-friendly; ~18 kB и можно почти всё заменить CSS, где анимация не связана с данными |
 | Позиционирование поповеров | `@floating-ui/react-dom` (только движок позиционирования) | Рукописный tooltip (позиционирование кажется тривиальным, но: flip у краёв, follow за скроллом в скроллящихся списках — наш топ-10, ресайз, offset под курсор, `aria-describedby` — постоянная полировка вместо задачи), `@floating-ui/react` (полный, с interactions — свой store для open-state, +8 kB ради hover'а в 4 строки), radix-ui Tooltip (runtime-провайдеры конфликтуют с render-only слоем, стр. 102), CSS Anchor Positioning (нативная замена, но Firefox/Safari ещё не поддерживают) | Движок — фактический стандарт (тултипы MUI стоят на нём); flip/shift/offset + `autoUpdate` (следит за скроллом/ресайзом) из коробки; ~2–3 kB, tree-shakeable, хуки без провайдеров — дружит с render-only. Hover-логика (4 строки) — в примитиве `components/ui/Tooltip.tsx`. **План отказа:** когда CSS Anchor Positioning дописывает кросс-браузерность — заменяем на нативку и сносим зависимость |
-| Примитивы UI | рукописные (`components/ui/`) | radix-ui primitives, React Aria Components (оба — runtime-провайдеры и обёртки ради пары сценариев) | Инвентарь сценариев мал: tooltip (2 кейса — бейдж, строка) — см. строку про Floating UI; чарт-tooltip — штатный у recharts; toast-рендер — `<Toaster>` sonner. Остаётся SegmentedControl (radio-семантика, roving tabindex, стрелки — ~40 строк известного паттерна) и чистый div+CSS (`Card`, `Badge`, `Skeleton`, `Avatar`); библиотека примитивов ради одного SegmentedControl не окупается |
+| Примитивы UI | рукописные (`components/ui/`) | radix-ui primitives, React Aria Components (оба — runtime-провайдеры и обёртки ради пары сценариев) | Инвентарь сценариев мал: tooltip (2 кейса — бейдж, строка) — см. строку про Floating UI; чарт-tooltip — штатный у recharts; toast-рендер — `<Toaster>` sonner. Остаётся SegmentedControl (radio-семантика, roving tabindex, стрелки — ~40 строк известного паттерна) и чистый div+CSS (`Card`, `Badge`, `Skeleton`, `Avatar`, `Popover`); библиотека примитивов ради одного SegmentedControl не окупается |
+| Пикер диапазона дат | `react-day-picker` (слой календаря) | Самописный на `date-fns` (сетка 7×6 + логика 2 кликов + hover-превью + a11y — ~150–200 строк полировки вместо задачи), MUI X Date Picker (тянет MUI-систему), Ant Design (тянет antd), react-datepicker (moment-модель дат, нет range-модели из коробки) | `mode="range"` закрывает весь сценарий `ui.md` «Произвольный период»: выбор в 2 клика, hover-превью, невалидный диапазон незавершаем (клик раньше `from` начинает новый), сетка месяцев и навигация — всё встроено; date-fns — нативно (тот же date-стек); TypeScript и a11y календаря из коробки; 6M+ загрузок/нед. Ключевое: это **слой календаря, не готовый виджет** — без своего поповера, инпута и оверлея, поэтому вписывается в render-only архитектуру: оборачивается в наш `components/ui/Popover` (`useDisclosure` + `@floating-ui`), наружу отдаёт `{ from, to, onPeriodChange }` как любой примитив |
 | Стили | `tailwindcss` v4 | CSS Modules (тяжелее поддерживать дизайн-систему в одном месте), styled-components (runtime CSS-in-JS, минус для SSR и для render-only компонент) | v4 — CSS-first конфиг (`@theme`), design tokens в CSS без JS-сборки; с render-only компонентами работает без перекрещивания runtime; официальный рецепт Next.js (шаблоны App Router создаются с ним по умолчанию) |
 | HTTP-клиент | `fetch` (native) | axios (XSRF/interceptors не нужны, вес лишний), ky (лишний слой над fetch) | Один POST, без авторизации, без interceptors; `AbortController` для retry/cancel — нативно; типизация DTO — генерируем/пишем руками в `types/dto.ts` |
 
