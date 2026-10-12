@@ -166,13 +166,13 @@ export function createDashboardDtoMock(): DashboardDto
       {
         name: "Валовая прибыль",
         items: [
-          { id: "c1", name: "ООО Ромашка", valueNormalized: 100, absoluteDelta: 35_000, delta: null },
+          { id: "c1", name: "ООО Ромашка", valueNormalized: 100, deltaAbsolute: 35_000, deltaRelative: null },
         ],
       },
       {
         name: "Средний чек",
         items: [
-          { id: "c2", name: "ООО Лютик", valueNormalized: 100, absoluteDelta: 4_800, delta: null },
+          { id: "c2", name: "ООО Лютик", valueNormalized: 100, deltaAbsolute: 4_800, deltaRelative: null },
         ],
       },
     ],
@@ -180,13 +180,13 @@ export function createDashboardDtoMock(): DashboardDto
       {
         name: "Валовая прибыль",
         items: [
-          { id: "c3", name: "ИП Петров", valueNormalized: 100, absoluteDelta: -9_500, delta: null },
+          { id: "c3", name: "ИП Петров", valueNormalized: 100, deltaAbsolute: -9_500, deltaRelative: null },
         ],
       },
       {
         name: "Средний чек",
         items: [
-          { id: "c4", name: "ООО Василёк", valueNormalized: 100, absoluteDelta: -2_100, delta: null },
+          { id: "c4", name: "ООО Василёк", valueNormalized: 100, deltaAbsolute: -2_100, deltaRelative: null },
         ],
       },
     ],

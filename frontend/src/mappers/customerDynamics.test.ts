@@ -13,8 +13,8 @@ describe("mapCustomerDynamicsItem", () =>
       id: "c1",
       name: "ООО Ромашка",
       valueNormalized: 100,
-      absoluteDelta: 35_000,
-      delta: { value: 10, unit: 1 },
+      deltaAbsolute: 35_000,
+      deltaRelative: { value: 10, unit: 1 },
     });
 
     expect(item.id).toBe("c1");
@@ -30,8 +30,8 @@ describe("mapCustomerDynamicsItem", () =>
       id: "c2",
       name: "ИП Петров",
       valueNormalized: 82,
-      absoluteDelta: -9_500,
-      delta: null,
+      deltaAbsolute: -9_500,
+      deltaRelative: null,
     });
 
     expect(item.valueNormalized).toBe(82);
@@ -46,23 +46,23 @@ describe("mapCustomerDynamicsItem", () =>
         id: "c1",
         name: "A",
         valueNormalized: "25" as unknown as number,
-        absoluteDelta: 0,
-        delta: null,
+        deltaAbsolute: 0,
+        deltaRelative: null,
       }),
     ).toThrow(/customerDynamics\.valueNormalized/);
   });
 
-  it("бросает ParseError на строке вместо absoluteDelta", () =>
+  it("бросает ParseError на строке вместо deltaAbsolute", () =>
   {
     expect(() =>
       mapCustomerDynamicsItem({
         id: "c1",
         name: "A",
         valueNormalized: 25,
-        absoluteDelta: "35 000" as unknown as number,
-        delta: null,
+        deltaAbsolute: "35 000" as unknown as number,
+        deltaRelative: null,
       }),
-    ).toThrow(/customerDynamics\.absoluteDelta/);
+    ).toThrow(/customerDynamics\.deltaAbsolute/);
   });
 });
 
@@ -77,8 +77,8 @@ describe("mapCustomerDynamics", () =>
           id: "g1",
           name: "Рост 1",
           valueNormalized: 100,
-          absoluteDelta: 874_000,
-          delta: null,
+          deltaAbsolute: 874_000,
+          deltaRelative: null,
         },
       ],
     };
@@ -90,8 +90,8 @@ describe("mapCustomerDynamics", () =>
           id: "d1",
           name: "Падение 1",
           valueNormalized: 45,
-          absoluteDelta: -120_000,
-          delta: null,
+          deltaAbsolute: -120_000,
+          deltaRelative: null,
         },
       ],
     };

@@ -140,9 +140,9 @@ export type CustomerDynamicsItemDto = {
   /** Длина бара, 0–100 (доля максимума своей секции датасета). */
   valueNormalized: number;
   /** Абсолютная разность метрик между периодами (первая строка подписи). */
-  absoluteDelta: number;
+  deltaAbsolute: number;
   /** Относительная Δ; null при пустой базовой метрике. */
-  delta: DeltaDto | null;
+  deltaRelative: DeltaDto | null;
 };
 
 /** Блок 5 api.md (`CustomerDynamicsDto`): секции «Рост»/«Падение» с готовым топ-5 в каждом датасете. */

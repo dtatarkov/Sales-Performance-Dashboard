@@ -47,7 +47,7 @@ export function mapCustomerDynamicsItem(
       raw.valueNormalized,
       "customerDynamics.valueNormalized",
     ),
-    absoluteDelta: parseNumber(raw.absoluteDelta, "customerDynamics.absoluteDelta"),
-    delta: mapDelta(raw.delta, "customerDynamics.delta"),
+    absoluteDelta: parseNumber(raw.deltaAbsolute, "customerDynamics.deltaAbsolute"),
+    delta: mapDelta(raw.deltaRelative, "customerDynamics.deltaRelative"),
   };
 }
