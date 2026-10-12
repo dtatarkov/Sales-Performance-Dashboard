@@ -7,7 +7,7 @@ namespace SalesDashboard.Infrastructure.ReadPorts;
 
 /// <summary>
 /// Источник данных по менеджерам (backend.md §5.3): ростер, агрегаты оплачиваемой
-/// когорты по каждому менеджеру и дневной ряд одного менеджера. Отмены считаются
+/// когорты по каждому менеджеру и ряд по бакетам одного менеджера. Отмены считаются
 /// по <c>cancelledAt</c> в том же окне.
 /// </summary>
 public sealed class EfManagerReadPort(SalesDbContext db) : IManagerReadPort
@@ -86,10 +86,14 @@ public sealed class EfManagerReadPort(SalesDbContext db) : IManagerReadPort
         // Оплаченная когорта с фильтром по конкретному менеджеру.
         var paid = db.Sales.AsNoTracking().InPaidCohort(filter).Where(s => s.ManagerId == managerId);
 
-        // Счётчик сделок по дням (без JOIN к позициям).
+        // Шаг сетки бакетов — от начала периода (SeriesBuckets).
+        var stepHours = SeriesBuckets.StepHoursOf(filter.Period);
+
+        // Счётчик сделок по паре (день, час) оплаты — бакет-ключ собирается
+        // ниже в памяти (SeriesBuckets, api.md SeriesPointDto).
         var counts = await paid
-            .GroupBy(s => s.PaidAt!.Value.Date)
-            .Select(g => new { Date = g.Key, Count = g.Count() })
+            .GroupBy(s => new { Date = s.PaidAt!.Value.Date, Hour = s.PaidAt!.Value.Hour })
+            .Select(g => new { g.Key.Date, g.Key.Hour, Count = g.Count() })
             .ToListAsync(cancellationToken);
 
         // Разворачиваем продажи в позиции для подсчёта денег.
@@ -97,8 +101,9 @@ public sealed class EfManagerReadPort(SalesDbContext db) : IManagerReadPort
                        from i in s.Items
                        select new
                        {
-                           // День оплаты (без времени) — ключ группировки.
+                           // День и час оплаты — компоненты ключа группировки.
                            s.PaidAt!.Value.Date,
+                           s.PaidAt!.Value.Hour,
                            // Фильтр по возврату.
                            s.RefundedAt,
                            // Количество.
@@ -109,32 +114,32 @@ public sealed class EfManagerReadPort(SalesDbContext db) : IManagerReadPort
                            i.UnitCost,
                        };
 
-        // Группируем позиции по дню и считаем суммы только по невозвращённым позициям.
+        // Группируем позиции по паре (день, час) и считаем суммы только по невозвращённым позициям.
         var money = await itemRows
-            .GroupBy(x => x.Date)
+            .GroupBy(x => new { x.Date, x.Hour })
             .Select(g => new
             {
-                // Ключ группировки.
-                Date = g.Key,
-                // Выручка дня: SUM(SalePrice × Quantity), невозвращённые позиции.
+                // Компоненты ключа группировки.
+                g.Key.Date,
+                g.Key.Hour,
+                // Выручка: SUM(SalePrice × Quantity), невозвращённые позиции.
                 Revenue = g.Where(x => x.RefundedAt == null).Sum(x => (decimal?)(x.SalePrice * x.Quantity)) ?? 0m,
-                // Себестоимость дня: SUM(UnitCost × Quantity), невозвращённые позиции.
+                // Себестоимость: SUM(UnitCost × Quantity), невозвращённые позиции.
                 Cost = g.Where(x => x.RefundedAt == null).Sum(x => (decimal?)(x.UnitCost * x.Quantity)) ?? 0m,
             })
             .ToListAsync(cancellationToken);
 
-        // Индекс счётчика по дню для подстановки в итоговую строку.
-        var countByDay = counts.ToDictionary(c => c.Date, c => c.Count);
-
-        // Сборка итоговых строк: упорядочивание по дате, подстановка счётчика.
-        var dailyRows = money
-            .OrderBy(m => m.Date)
-            .Select(m => new DailyAggregateRow(
-                m.Date,
-                m.Revenue,
-                m.Cost,
-                countByDay.TryGetValue(m.Date, out var count) ? count : 0))
+        // (день, час)-группы SQL сворачиваются в строки-бакеты общей сборкой
+        // (SeriesBucketRows, api.md SeriesPointDto).
+        var countRows = counts
+            .Select(c => new SeriesBucketRows.CountRow(c.Date, c.Hour, c.Count))
             .ToList();
+
+        var moneyRows = money
+            .Select(m => new SeriesBucketRows.MoneyRow(m.Date, m.Hour, m.Revenue, m.Cost))
+            .ToList();
+
+        var dailyRows = SeriesBucketRows.MoneyAndCountRows(filter.Period, stepHours, moneyRows, countRows);
 
         return dailyRows;
     }

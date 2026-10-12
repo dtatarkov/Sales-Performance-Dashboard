@@ -88,13 +88,13 @@ public sealed class ManagerBuilder(
         var comparisonGrossProfitItems = byGrossProfit
             .Take(TopN)
             .Select(r => new ManagerComparisonItemModel(
-                r.Person.Id, r.Person.Name, r.GrossProfit, r.GrossProfitDelta))
+                r.Person.Id, r.Person.Name, r.Person.Team, r.GrossProfit, r.GrossProfitDelta))
             .ToList();
 
         var comparisonAverageCheckItems = byAverageCheck
             .Take(TopN)
             .Select(r => new ManagerComparisonItemModel(
-                r.Person.Id, r.Person.Name, r.AverageCheck, r.AverageCheckDelta))
+                r.Person.Id, r.Person.Name, r.Person.Team, r.AverageCheck, r.AverageCheckDelta))
             .ToList();
 
         var comparison = new ManagerComparisonModel([

@@ -2,7 +2,7 @@ namespace SalesDashboard.Application.Abstractions.Queries;
 
 /// <summary>
 /// Источник блоков менеджеров: реестр плюс агрегаты оплаченной когорты по
-/// каждому менеджеру за любой период, и дневная серия выручки одного менеджера.
+/// каждому менеджеру за любой период, и серия выручки одного менеджера по бакетам.
 /// </summary>
 public interface IManagerReadPort
 {
@@ -16,7 +16,7 @@ public interface IManagerReadPort
     /// </summary>
     Task<IReadOnlyList<ManagerAggregateRow>> ReadAggregatesAsync(ReadFilter filter, CancellationToken cancellationToken);
 
-    /// <summary>Дневная серия оплаченной когорты одного менеджера (спарклайн лучшего менеджера).</summary>
+    /// <summary>Серия по бакетам оплаченной когорты одного менеджера (спарклайн лучшего менеджера).</summary>
     Task<IReadOnlyList<DailyAggregateRow>> ReadDailyByManagerAsync(
         Guid managerId,
         ReadFilter filter,

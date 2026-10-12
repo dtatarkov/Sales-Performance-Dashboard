@@ -17,7 +17,9 @@ public sealed class DashboardEndpointTests : IClassFixture<DashboardApiFactory>
 
     private static object RecentPeriodBody(int? segment = null)
     {
-        var to = DateTime.UtcNow;
+        // Целодневный период: сетка бакетов определена только для полуночи
+        // в обоих концах (PERIOD_NOT_DAY_ALIGNED).
+        var to = DateTime.UtcNow.Date;
         var from = to.AddDays(-29);
         return new { from = from.ToString("O"), to = to.ToString("O"), segment };
     }
@@ -78,10 +80,11 @@ public sealed class DashboardEndpointTests : IClassFixture<DashboardApiFactory>
     [Fact]
     public async Task Segment_outside_enum_returns_segment_invalid()
     {
+        // Концы целодневные, чтобы единственной ошибкой остался сегмент.
         var body = new
         {
-            from = DateTime.UtcNow.AddDays(-29).ToString("O"),
-            to = DateTime.UtcNow.ToString("O"),
+            from = DateTime.UtcNow.Date.AddDays(-29).ToString("O"),
+            to = DateTime.UtcNow.Date.ToString("O"),
             segment = 99,
         };
 
@@ -90,6 +93,36 @@ public sealed class DashboardEndpointTests : IClassFixture<DashboardApiFactory>
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("SEGMENT_INVALID", problem.GetProperty("errors")[0].GetProperty("code").GetString());
+    }
+
+    [Theory]
+    [InlineData(4, 25, 31)]  // кейс из обсуждения сетки: «точка 04:25:31»
+    [InlineData(10, 0, 0)]   // ровная середина дня
+    public async Task Mid_day_boundaries_return_period_not_day_aligned(
+        int hour,
+        int minute,
+        int second)
+    {
+        // Оба конца не в полночь: сетка бакетов серий якорится на полночь,
+        // поэтому период отклоняется целиком с двумя ошибками (api.md,
+        // PERIOD_NOT_DAY_ALIGNED).
+        var from = DateTime.UtcNow.Date.AddDays(-29).AddHours(hour).AddMinutes(minute).AddSeconds(second);
+        var to = DateTime.UtcNow.Date.AddHours(hour).AddMinutes(minute).AddSeconds(second);
+
+        var body = new { from = from.ToString("O"), to = to.ToString("O"), segment = (int?)null };
+
+        var response = await _client.PostAsJsonAsync("/api/v1/dashboard", body);
+        var problem = await ReadProblemAsync(response);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var errors = problem.GetProperty("errors");
+
+        Assert.Equal(2, errors.GetArrayLength());
+
+        Assert.All(errors.EnumerateArray(), error => Assert.Equal("PERIOD_NOT_DAY_ALIGNED", error.GetProperty("code").GetString()));
+        Assert.Equal("from", errors[0].GetProperty("field").GetString());
+        Assert.Equal("to", errors[1].GetProperty("field").GetString());
     }
 
     [Fact]

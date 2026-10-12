@@ -87,4 +87,42 @@ public sealed class KpiBuilderTests
         Assert.Equal(300m, bestManager.Delta!.Value); // собственная ВП предыдущего: (400 - 100) / 100 * 100
         Assert.Equal(30, bestManager.Series.Count);   // серия непрерывна даже без дневных строк
     }
+
+    [Fact]
+    public async Task One_day_period_yields_24_hourly_series_points()
+    {
+        // Однодневный период 2 октября (полуинтервал [02.10, 03.10)).
+        var oneDay = new DateRange(
+            new DateTime(2026, 10, 2, 0, 0, 0, DateTimeKind.Utc),
+            new DateTime(2026, 10, 3, 0, 0, 0, DateTimeKind.Utc));
+
+        var kpi = new FakeKpiReadPort
+        {
+            Daily = filter => filter.Period.Duration == TimeSpan.FromDays(1)
+                ? [
+                    // Продажи в 05:00 и 18:00 UTC — попадают в свои часовые бакеты.
+                    new DailyAggregateRow(new DateTime(2026, 10, 2, 5, 0, 0, DateTimeKind.Utc), 100m, 40m, 1),
+                    new DailyAggregateRow(new DateTime(2026, 10, 2, 18, 0, 0, DateTimeKind.Utc), 50m, 20m, 2),
+                ]
+                : Array.Empty<DailyAggregateRow>(),
+        };
+
+        var model = await Create(kpi, new FakeManagerReadPort())
+            .BuildAsync(new DashboardQuery(oneDay, null), CancellationToken.None);
+
+        // Серия непрерывна по часам: 24 точки.
+        Assert.Equal(24, model.Revenue.Series.Count);
+
+        var revenueByHour = model.Revenue.Series.ToDictionary(p => p.DateFrom.Hour, p => p.Value);
+
+        // Значения попали в свои часы; остальные часы — настоящий ноль.
+        Assert.Equal(100m, revenueByHour[5]);
+        Assert.Equal(50m, revenueByHour[18]);
+        Assert.Equal(0m, revenueByHour[6]);
+        Assert.Equal(0m, revenueByHour[0]);
+
+        // Пункт начала серии — начало периода (00:00); ширина точки — час.
+        Assert.Equal(new DateTime(2026, 10, 2, 0, 0, 0, DateTimeKind.Utc), model.Revenue.Series[0].DateFrom);
+        Assert.Equal(new DateTime(2026, 10, 2, 1, 0, 0, DateTimeKind.Utc), model.Revenue.Series[0].DateTo);
+    }
 }

@@ -60,7 +60,9 @@ public sealed record DashboardModel(
         ManagerRating: new ManagerRatingModel(Array.Empty<DatasetModel<ManagerRatingItemModel>>()),
         ManagerComparison: new ManagerComparisonModel(Array.Empty<DatasetModel<ManagerComparisonItemModel>>()),
         TopCustomers: new CustomerTopModel(Array.Empty<DatasetModel<CustomerTopItemModel>>()),
-        CustomerDynamics: new CustomerDynamicsModel(Array.Empty<DatasetModel<CustomerDynamicsItemModel>>()),
+        CustomerDynamics: new CustomerDynamicsModel(
+            Array.Empty<DatasetModel<CustomerDynamicsItemModel>>(),
+            Array.Empty<DatasetModel<CustomerDynamicsItemModel>>()),
         TimeSeries: new TimeSeriesModel(Array.Empty<DatasetModel<TimeSeriesPointModel>>()),
         Categories: new CategoriesModel(Array.Empty<CategoryDatasetModel>()),
         TopProducts: new ProductsModel(Array.Empty<DatasetModel<ProductItemModel>>()),

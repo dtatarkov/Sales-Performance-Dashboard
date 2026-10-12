@@ -17,8 +17,12 @@ public sealed record DatasetModel<T>(string Name, IReadOnlyList<T> Items);
 /// </summary>
 public sealed record DeltaModel(decimal Value, DeltaUnit Unit);
 
-/// <summary>Одна точка дневной серии (api.md, <c>SeriesPointDto</c>).</summary>
-public sealed record SeriesPointModel(DateTime Date, decimal Value);
+/// <summary>
+/// Одна точка серии (api.md, <c>SeriesPointDto</c>): значение метрики в
+/// полуинтервале [DateFrom, DateTo) — бакет сетки серий
+/// (<see cref="SalesDashboard.Application.Abstractions.Queries.SeriesBuckets"/>).
+/// </summary>
+public sealed record SeriesPointModel(DateTime DateFrom, DateTime DateTo, decimal Value);
 
 /// <summary>
 /// Доля элемента в результате периода в трёх взаимозаменяемых формах

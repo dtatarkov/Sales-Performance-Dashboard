@@ -60,6 +60,7 @@ public sealed record CancellationsModel(
 /// отмен.
 /// </summary>
 /// <param name="Category">Категория товара, показывается только на строках возвратов.</param>
+/// <param name="Team">Команда менеджера, показывается только на строках отмен.</param>
 /// <param name="ValueAbsolute">Потеря, отнесённая на этот объект.</param>
 /// <param name="ValueRelative">Доля от суммы группы, 0–100; строки топа плюс хвост дают 100%.</param>
 /// <param name="ValueNormalized">Длина бара 0–100.</param>
@@ -67,6 +68,7 @@ public sealed record LossItemModel(
     Guid Id,
     string Name,
     string? Category,
+    string? Team,
     decimal ValueAbsolute,
     decimal ValueRelative,
     decimal ValueNormalized);

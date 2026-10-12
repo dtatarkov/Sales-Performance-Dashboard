@@ -1,4 +1,4 @@
 namespace SalesDashboard.Api.Dtos;
 
-/// <summary>One point of the time series (api.md, TimeSeriesPointDto).</summary>
-public sealed record TimeSeriesPointDto(DateTime Date, decimal ValueCurrent, decimal? ValuePrevious);
+/// <summary>Точка динамики во времени: значения на полуинтервале [DateFrom, DateTo) (api.md, TimeSeriesPointDto).</summary>
+public sealed record TimeSeriesPointDto(DateTime DateFrom, DateTime DateTo, decimal ValueCurrent, decimal? ValuePrevious);

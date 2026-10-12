@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Макет пикера дат — выбор одного дня и диапазона</title>
+<style>
+  /*
+   * Макет пикера дат (Popover + DayPicker v9) — правки UI:
+   *   A) паддинг панели со всех сторон (был прижат к левому краю);
+   *   B) даты между from/to — сплошная ярко-синяя лента, белый текст;
+   *   C) today вне диапазона — голубой круг, чёрный текст (был квадрат
+   *      с рамкой);
+   * Идеи сверх запроса (панель B):
+   *   D) today на конце диапазона — синий круг с белым кольцом;
+   *   E) hover — голубый круг;
+   *   F) будущие даты неактивны (серые) — нельзя выбрать пустой период.
+   * Токены — app/globals.css; реализация — classNames в DateRangePicker.tsx
+   * (+ disabled после today в DayPicker, panel padding в Popover/обёртке).
+   */
+  :root {
+    --background: #f4f6f9;
+    --surface: #ffffff;
+    --border: #e0e3e8;
+    --text-primary: #1a1d24;
+    --text-secondary: #6b707a;
+    --text-tertiary: #9ca3af;
+    --accent: #3b82f6;
+    --accent-soft: rgba(59, 130, 246, 0.12);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 40px;
+    padding: 40px 24px;
+    background: var(--background);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  .stage { display: flex; flex-direction: column; gap: 12px; }
+
+  .stage-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-align: center;
+  }
+
+  /*
+   * Панель пикера: радиус и тень — как у Popover; паддинг 16px — правка A.
+   */
+  .panel {
+    width: 340px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    padding: 16px;
+    /* Текст календаря не выделяется мышью. */
+    user-select: none;
+  }
+
+  /* Шапка месяца: заголовок + стрелки навигации. */
+  .month-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+
+  .month-title { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+
+  .month-nav {
+    display: flex;
+    gap: 4px;
+  }
+
+  .nav-btn {
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 14px;
+    cursor: pointer;
+    line-height: 1;
+  }
+
+  .nav-btn:hover { background: #f3f4f6; }
+
+  /* Сетка дней: 7 колонок без зазоров — лента диапазона непрерывна. */
+  .weekdays, .week {
+    display: grid;
+    grid-template-columns: repeat(7, 44px);
+  }
+
+  .weekday {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    text-align: center;
+    padding-bottom: 6px;
+  }
+
+  .day {
+    height: 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    color: var(--text-primary);
+    position: relative;
+  }
+
+  /* Дни соседнего месяца — приглушены. */
+  .muted { color: var(--text-tertiary); }
+
+  /* Лента диапазона: от и до + середина, сплошной синий (правка B). */
+  .band { background: var(--accent); color: #fff; font-weight: 500; }
+
+  .band-start { border-radius: 999px 0 0 999px; }
+  .band-end { border-radius: 0 999px 999px 0; }
+
+  /* Одиночный день (from == to) — полный круг. */
+  .band-single { border-radius: 999px; }
+
+  /*
+   * Круги — радиальными градиентами на фоне ячейки: фон рисуется под
+   * текстом (число не перекрывается), диаметр фиксирован независимо от
+   * ячейки 44×38 (border-radius: 50% на ячейке давал овал).
+   *
+   * today вне диапазона: бледно-голубой круг 40px, чёрный текст.
+   */
+  .today {
+    color: var(--text-primary);
+    font-weight: 600;
+    background-image: radial-gradient(
+      circle at center,
+      var(--accent-soft) 0 20px,
+      transparent 20.5px
+    );
+  }
+
+  /*
+   * today на конце ленты: ячейка — обычный band-end (стили range не
+   * тронуты), маркер — полупрозрачно-белый круг 40px поверх синей заливки
+   * (бледно-голубой на синем не виден). Синего остаётся ~2px вокруг круга.
+   */
+  .band-end.today-end {
+    background-image: radial-gradient(
+      circle at center,
+      rgba(255, 255, 255, 0.3) 0 20px,
+      transparent 20.5px
+    );
+  }
+
+  /* Hover обычного дня — голубой круг 34px. */
+  .day:not(.band):not(.muted):not(.disabled):hover {
+    cursor: pointer;
+    background-image: radial-gradient(
+      circle at center,
+      var(--accent-soft) 0 17px,
+      transparent 17.5px
+    );
+  }
+
+  /* Будущие даты: серые, не интерактивны (идея F). */
+  .disabled { color: var(--text-tertiary); cursor: default; }
+
+  .notes {
+    max-width: 760px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+  }
+
+  .notes b { color: var(--text-primary); }
+
+  .notes code {
+    font-size: 11px;
+    background: #e9edf3;
+    border-radius: 4px;
+    padding: 1px 5px;
+    color: #2563eb;
+  }
+</style>
+</head>
+<body>
+
+  <!-- Панель A: правки пользователя (padding, синяя середина, today-круг) -->
+  <div class="stage">
+    <div class="panel">
+      <div class="month-head">
+        <div class="month-title">октябрь 2026</div>
+        <div class="month-nav">
+          <button class="nav-btn">‹</button>
+          <button class="nav-btn">›</button>
+        </div>
+      </div>
+
+      <div class="weekdays">
+        <div class="weekday">пн</div><div class="weekday">вт</div>
+        <div class="weekday">ср</div><div class="weekday">чт</div>
+        <div class="weekday">пт</div><div class="weekday">сб</div>
+        <div class="weekday">вс</div>
+      </div>
+
+      <div class="week">
+        <div class="day muted">28</div><div class="day muted">29</div>
+        <div class="day muted">30</div>
+        <div class="day">1</div><div class="day">2</div>
+        <div class="day band band-start">3</div>
+        <div class="day band">4</div>
+      </div>
+      <div class="week">
+        <div class="day band">5</div>
+        <div class="day band">6</div>
+        <div class="day band">7</div>
+        <div class="day band band-end">8</div>
+        <div class="day">9</div>
+        <div class="day today">10</div>
+        <div class="day">11</div>
+      </div>
+      <div class="week">
+        <div class="day">12</div><div class="day">13</div><div class="day">14</div>
+        <div class="day">15</div><div class="day">16</div><div class="day">17</div>
+        <div class="day">18</div>
+      </div>
+      <div class="week">
+        <div class="day">19</div><div class="day">20</div><div class="day">21</div>
+        <div class="day">22</div><div class="day">23</div><div class="day">24</div>
+        <div class="day">25</div>
+      </div>
+      <div class="week">
+        <div class="day">26</div><div class="day">27</div><div class="day">28</div>
+        <div class="day">29</div><div class="day">30</div><div class="day">31</div>
+        <div class="day muted">1</div>
+      </div>
+    </div>
+    <div class="stage-label">A — today вне range (правки: padding, синяя лента середины)</div>
+  </div>
+
+  <!-- Панель B: идеи — today-конец с кольцом, hover, будущие неактивны -->
+  <div class="stage">
+    <div class="panel">
+      <div class="month-head">
+        <div class="month-title">октябрь 2026</div>
+        <div class="month-nav">
+          <button class="nav-btn">‹</button>
+          <button class="nav-btn">›</button>
+        </div>
+      </div>
+
+      <div class="weekdays">
+        <div class="weekday">пн</div><div class="weekday">вт</div>
+        <div class="weekday">ср</div><div class="weekday">чт</div>
+        <div class="weekday">пт</div><div class="weekday">сб</div>
+        <div class="weekday">вс</div>
+      </div>
+
+      <div class="week">
+        <div class="day muted">28</div><div class="day muted">29</div>
+        <div class="day muted">30</div>
+        <div class="day">1</div><div class="day">2</div>
+        <div class="day band band-start">3</div>
+        <div class="day band">4</div>
+      </div>
+      <div class="week">
+        <div class="day band">5</div>
+        <div class="day band">6</div>
+        <div class="day band">7</div>
+        <div class="day band">8</div>
+        <div class="day band">9</div>
+        <div class="day band band-end today-end">10</div>
+        <div class="day disabled">11</div>
+      </div>
+      <div class="week">
+        <div class="day disabled">12</div><div class="day disabled">13</div>
+        <div class="day disabled">14</div>
+        <div class="day disabled">15</div>
+        <div class="day disabled">16</div><div class="day disabled">17</div>
+        <div class="day disabled">18</div>
+      </div>
+      <div class="week">
+        <div class="day disabled">19</div><div class="day disabled">20</div>
+        <div class="day disabled">21</div>
+        <div class="day disabled">22</div><div class="day disabled">23</div>
+        <div class="day disabled">24</div><div class="day disabled">25</div>
+      </div>
+      <div class="week">
+        <div class="day disabled">26</div><div class="day disabled">27</div>
+        <div class="day disabled">28</div>
+        <div class="day disabled">29</div><div class="day disabled">30</div>
+        <div class="day disabled">31</div>
+        <div class="day disabled">1</div>
+      </div>
+    </div>
+    <div class="stage-label">B — today внутри range (будущие даты неактивны)</div>
+  </div>
+
+  <div class="notes">
+    <b>Правки (панель A):</b> паддинг панели 16px со всех сторон; даты между
+    from/to — сплошная синяя лента с белым текстом (концы скруглены по внешним
+    сторонам, одиночный день — полный круг); все круги — фиксированного
+    диаметра, центрированы в ячейке (ячейка не квадратная).<br>
+    <b>today — маркер одинаков внутри и вне range:</b> круг 40px. Вне range
+    (A, 10-е) — бледно-голубой, чёрный текст; внутри range (B, 10-е) — день
+    остаётся белым в синей ленте, круг полупрозрачно-белый поверх ленты
+    (стили range не тронуты, синего остаётся ~2px вокруг круга).<br>
+    <b>Идеи (панель B):</b> hover-круг на обычных датах (правило :hover, в
+    макете не показано); будущие даты неактивны — защищает от выбора периода
+    без данных. Реализация — <code>classNames</code> в
+    <code>DateRangePicker.tsx</code> + <code>disabled={{ after: today }}</code>,
+    паддинг — обёртка панели.
+  </div>
+
+</body>
+</html>

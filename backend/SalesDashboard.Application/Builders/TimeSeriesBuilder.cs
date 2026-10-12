@@ -4,19 +4,21 @@ using SalesDashboard.Domain;
 
 namespace SalesDashboard.Application.Builders;
 
-/// <summary>Блок 6 (api.md): выручка, валовая прибыль и число продаж по дням.</summary>
+/// <summary>Блок 6 (api.md): выручка, валовая прибыль и число продаж по бакетам
+/// сетки серий периода (<see cref="SeriesBuckets"/>).</summary>
 public interface ITimeSeriesBuilder
 {
     Task<TimeSeriesModel> BuildAsync(DashboardQuery query, CancellationToken cancellationToken);
 }
 
 /// <summary>
-/// Три датасета блока — выручка, валовая прибыль, число продаж; каждый — дневная
-/// серия за активный период. Текущий день сопоставляется с днём на том же смещении
-/// в предыдущем сопоставимом периоде; дни без продаж несут настоящий ноль, поэтому
-/// обе линии остаются непрерывными (api.md, блок 6).
-/// Предыдущий период всегда равен активному по длительности (PeriodResolver),
-/// поэтому у каждого дня есть пара, и previousValue не бывает null.
+/// Три датасета блока — выручка, валовая прибыль, число продаж; каждый — серия
+/// за активный период по бакетам сетки серий (SeriesBuckets, api.md блок 6).
+/// Текущий бакет сопоставляется с бакетом на том же смещении в предыдущем
+/// сопоставимом периоде; бакеты без продаж несут настоящий ноль, поэтому обе
+/// линии остаются непрерывными (api.md, блок 6). Предыдущий период всегда равен
+/// активному по длительности (PeriodResolver), поэтому у него тот же шаг сетки,
+/// то же число бакетов, и previousValue не бывает null.
 /// </summary>
 public sealed class TimeSeriesBuilder(
     IKpiReadPort kpiPort,
@@ -27,44 +29,52 @@ public sealed class TimeSeriesBuilder(
         var current = new ReadFilter(query.Period, query.Segment);
 
         // Серия пунктира берётся из предыдущего сопоставимого периода той же
-        // длительности; пара для каждого дня гарантирована (domain.md).
+        // длительности; пара для каждого бакета гарантирована (domain.md).
         var previousPeriod = periodResolver.Previous(query.Period);
         var previous = new ReadFilter(previousPeriod, query.Segment);
 
         var currentDaily = await kpiPort.ReadDailyAsync(current, cancellationToken);
         var previousDaily = await kpiPort.ReadDailyAsync(previous, cancellationToken);
 
-        var currentDays = BuilderCommon.DaysOf(query.Period);
-        var previousDays = BuilderCommon.DaysOf(previousPeriod);
+        var currentBuckets = SeriesBuckets.BucketsOf(query.Period);
+        var previousBuckets = SeriesBuckets.BucketsOf(previousPeriod);
 
-        // Индекс «день → строки» для быстрого подстановления значений в точки серии.
-        var currentByDay = currentDaily.GroupBy(d => d.Date.Date).ToDictionary(g => g.Key, g => g.ToList());
-        var previousByDay = previousDaily.GroupBy(d => d.Date.Date).ToDictionary(g => g.Key, g => g.ToList());
+        // Шаг сетки задаёт ширину полуинтервала каждой точки; у предыдущего
+        // периода он тот же — длительности равны.
+        var stepHours = SeriesBuckets.StepHoursOf(query.Period);
+
+        // Индекс «бакет → строки» для быстрого подстановления значений в точки серии.
+        var currentByBucket = currentDaily.GroupBy(d => d.Date).ToDictionary(g => g.Key, g => g.ToList());
+        var previousByBucket = previousDaily.GroupBy(d => d.Date).ToDictionary(g => g.Key, g => g.ToList());
 
         // Локальная фабрика: три датасета различаются только селектором метрики,
-        // логика сопоставления дней общая.
+        // логика сопоставления бакетов общая.
         IReadOnlyList<TimeSeriesPointModel> Series(Func<DailyAggregateRow, decimal> selector)
         {
-            var points = new List<TimeSeriesPointModel>(currentDays.Count);
+            var points = new List<TimeSeriesPointModel>(currentBuckets.Count);
 
-            for (var i = 0; i < currentDays.Count; i++)
+            for (var i = 0; i < currentBuckets.Count; i++)
             {
-                var day = currentDays[i];
+                var bucket = currentBuckets[i];
 
-                // День без продаж отсутствует в индексе → настоящий ноль, линия не рвётся (api.md, блок 6).
-                var currentValue = currentByDay.TryGetValue(day, out var currentRows)
+                // Бакет без продаж отсутствует в индексе → настоящий ноль, линия не рвётся (api.md, блок 6).
+                var currentValue = currentByBucket.TryGetValue(bucket, out var currentRows)
                     ? currentRows.Sum(selector)
                     : 0m;
 
-                // Пара по индексу корректна: previousDays построен из периода той
-                // же длительности, что и currentDays.
-                var previousDay = previousDays[i];
+                // Пара по индексу корректна: previousBuckets построен из периода той
+                // же длительности, что и currentBuckets.
+                var previousBucket = previousBuckets[i];
 
-                var previousValue = previousByDay.TryGetValue(previousDay, out var previousRows)
+                var previousValue = previousByBucket.TryGetValue(previousBucket, out var previousRows)
                     ? previousRows.Sum(selector)
                     : 0m;
 
-                points.Add(new TimeSeriesPointModel(day, currentValue, previousValue));
+                points.Add(new TimeSeriesPointModel(
+                    bucket,
+                    bucket.AddHours(stepHours),
+                    currentValue,
+                    previousValue));
             }
 
             return points;

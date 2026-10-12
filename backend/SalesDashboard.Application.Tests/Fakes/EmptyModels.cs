@@ -14,7 +14,9 @@ internal static class EmptyModels
 
     internal static CustomerTopModel CustomerTop { get; } = new(Array.Empty<DatasetModel<CustomerTopItemModel>>());
 
-    internal static CustomerDynamicsModel CustomerDynamics { get; } = new(Array.Empty<DatasetModel<CustomerDynamicsItemModel>>());
+    internal static CustomerDynamicsModel CustomerDynamics { get; } = new(
+        Array.Empty<DatasetModel<CustomerDynamicsItemModel>>(),
+        Array.Empty<DatasetModel<CustomerDynamicsItemModel>>());
 
     internal static TimeSeriesModel TimeSeries { get; } = new(Array.Empty<DatasetModel<TimeSeriesPointModel>>());
 

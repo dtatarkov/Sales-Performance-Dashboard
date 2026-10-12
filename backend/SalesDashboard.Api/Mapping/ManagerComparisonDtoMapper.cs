@@ -10,5 +10,5 @@ public sealed class ManagerComparisonDtoMapper : IApiMapper<ManagerComparisonMod
         => new(source.Datasets.Select(d => SharedDtoMapper.MapDataset(d, MapItem)).ToList());
 
     private static ManagerComparisonItemDto MapItem(ManagerComparisonItemModel item)
-        => new(item.Id, item.Name, item.Value, SharedDtoMapper.MapDelta(item.Delta));
+        => new(item.Id, item.Name, item.Team, item.Value, SharedDtoMapper.MapDelta(item.Delta));
 }

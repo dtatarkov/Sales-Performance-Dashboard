@@ -7,7 +7,7 @@ namespace SalesDashboard.Infrastructure.ReadPorts;
 
 /// <summary>
 /// Источник данных по потерям (backend.md §5.3): суммы возвратов и отмен по дате
-/// события, дневные ряды и топы. Возвраты режутся по товарам, отмены — по
+/// события, ряды по бакетам и топы. Возвраты режутся по товарам, отмены — по
 /// менеджерам (domain.md, «Ответственность»). Счётчики когорт за двумя долями
 /// берутся из оплачиваемой когорты и окна событий соответственно.
 /// </summary>
@@ -50,25 +50,32 @@ public sealed class EfLossReadPort(SalesDbContext db) : ILossReadPort
         // Окно возвратов за период.
         var refunded = db.Sales.AsNoTracking().InRefundedWindow(filter);
 
-        // Разворачиваем продажи в позиции и группируем по дате возврата.
+        // Разворачиваем продажи в позиции и группируем по паре (день, час)
+        // возврата; бакет-ключ собирается ниже в памяти от начала периода
+        // (SeriesBuckets, api.md SeriesPointDto).
         var rows = await (from s in refunded
                           from i in s.Items
                           select new
                           {
-                              // День возврата (без времени) — ключ группировки.
+                              // День и час возврата — компоненты ключа группировки.
                               Date = s.RefundedAt!.Value.Date,
+                              s.RefundedAt!.Value.Hour,
                               // Сумма возврата позиции: SalePrice × Quantity.
                               Amount = (decimal?)(i.SalePrice * i.Quantity),
                           })
-            .GroupBy(x => x.Date)
-            .Select(g => new { Date = g.Key, Amount = g.Sum(x => x.Amount) ?? 0m })
+            .GroupBy(x => new { x.Date, x.Hour })
+            .Select(g => new { g.Key.Date, g.Key.Hour, Amount = g.Sum(x => x.Amount) ?? 0m })
             .ToListAsync(cancellationToken);
 
-        // Проекция в итоговые строки.
-        var dailyRows = rows
-            .OrderBy(r => r.Date)
-            .Select(r => new LossDailyRow(r.Date, r.Amount))
+        // Проекция в строки-бакеты общей сборкой: ключ собирается от начала
+        // периода с шагом сетки (SeriesBucketRows, api.md SeriesPointDto).
+        var stepHours = SeriesBuckets.StepHoursOf(filter.Period);
+
+        var amountRows = rows
+            .Select(r => new SeriesBucketRows.AmountRow(r.Date, r.Hour, r.Amount))
             .ToList();
+
+        var dailyRows = SeriesBucketRows.AmountRows(filter.Period, stepHours, amountRows);
 
         return dailyRows;
     }
@@ -78,25 +85,31 @@ public sealed class EfLossReadPort(SalesDbContext db) : ILossReadPort
         // Окно отмен за период.
         var cancelled = db.Sales.AsNoTracking().InCancelledWindow(filter);
 
-        // Разворачиваем продажи в позиции и группируем по дате отмены.
+        // Разворачиваем продажи в позиции и группируем по паре (день, час)
+        // отмены; бакет-ключ собирается ниже в памяти (SeriesBuckets).
         var rows = await (from s in cancelled
                           from i in s.Items
                           select new
                           {
-                              // День отмены (без времени) — ключ группировки.
+                              // День и час отмены — компоненты ключа группировки.
                               Date = s.CancelledAt!.Value.Date,
+                              s.CancelledAt!.Value.Hour,
                               // Сумма отмены позиции: SalePrice × Quantity.
                               Amount = (decimal?)(i.SalePrice * i.Quantity),
                           })
-            .GroupBy(x => x.Date)
-            .Select(g => new { Date = g.Key, Amount = g.Sum(x => x.Amount) ?? 0m })
+            .GroupBy(x => new { x.Date, x.Hour })
+            .Select(g => new { g.Key.Date, g.Key.Hour, Amount = g.Sum(x => x.Amount) ?? 0m })
             .ToListAsync(cancellationToken);
 
-        // Проекция в итоговые строки.
-        var dailyRows = rows
-            .OrderBy(r => r.Date)
-            .Select(r => new LossDailyRow(r.Date, r.Amount))
+        // Проекция в строки-бакеты общей сборкой: ключ собирается от начала
+        // периода с шагом сетки (SeriesBucketRows, api.md SeriesPointDto).
+        var stepHours = SeriesBuckets.StepHoursOf(filter.Period);
+
+        var amountRows = rows
+            .Select(r => new SeriesBucketRows.AmountRow(r.Date, r.Hour, r.Amount))
             .ToList();
+
+        var dailyRows = SeriesBucketRows.AmountRows(filter.Period, stepHours, amountRows);
 
         return dailyRows;
     }
@@ -134,7 +147,7 @@ public sealed class EfLossReadPort(SalesDbContext db) : ILossReadPort
 
         // Проекция в итоговые строки.
         var productRows = rows
-            .Select(r => new LossAggregateRow(r.ProductId, r.Name, r.Category, r.Amount))
+            .Select(r => new LossAggregateRow(r.ProductId, r.Name, r.Category, null, r.Amount))
             .ToList();
 
         return productRows;
@@ -154,15 +167,18 @@ public sealed class EfLossReadPort(SalesDbContext db) : ILossReadPort
                               s.ManagerId,
                               // Название менеджера.
                               s.Manager.Name,
+                              // Команда менеджера — подпись строки топа.
+                              s.Manager.Team,
                               // Сумма отмены позиции: SalePrice × Quantity.
                               Amount = (decimal?)(i.SalePrice * i.Quantity),
                           })
-            .GroupBy(x => new { x.ManagerId, x.Name })
+            .GroupBy(x => new { x.ManagerId, x.Name, x.Team })
             .Select(g => new
             {
                 // Ключ группировки.
                 g.Key.ManagerId,
                 g.Key.Name,
+                g.Key.Team,
                 // Сумма потерь по менеджеру.
                 Amount = g.Sum(x => x.Amount) ?? 0m,
             })
@@ -170,7 +186,7 @@ public sealed class EfLossReadPort(SalesDbContext db) : ILossReadPort
 
         // Проекция в итоговые строки.
         var managerRows = rows
-            .Select(r => new LossAggregateRow(r.ManagerId, r.Name, null, r.Amount))
+            .Select(r => new LossAggregateRow(r.ManagerId, r.Name, null, r.Team, r.Amount))
             .ToList();
 
         return managerRows;

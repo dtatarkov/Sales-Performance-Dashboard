@@ -62,7 +62,7 @@ public sealed class LossBuilder(
         var (refundTop, refundTail) = BuildTop(refundedByProduct);
         var (cancellationTop, cancellationTail) = BuildTop(cancelledByManager);
 
-        // Блок 10: сумма, доля, Δ в п.п., дневной ряд, топ и хвост возвратов.
+        // Блок 10: сумма, доля, Δ в п.п., ряд по бакетам, топ и хвост возвратов.
         var refunds = new RefundsModel(
             totals.RefundedAmount,
             refundRate,
@@ -106,7 +106,7 @@ public sealed class LossBuilder(
 
         // Топ-N объектов: доля от общей суммы (сегмент бублика) и длина бара.
         var top = ordered.Take(TopN).Select(r => new LossItemModel(
-            r.Id, r.Name, r.Category,
+            r.Id, r.Name, r.Category, r.Team,
             r.Amount,
             total != 0 ? r.Amount / total * 100 : 0m,
             contributions.BarLength(r.Amount, groupMax))).ToList();
@@ -136,14 +136,19 @@ public sealed class LossBuilder(
         DateRange period,
         IReadOnlyList<LossDailyRow> daily)
     {
-        // Индекс «день → сумма потерь» для быстрого подстановления значения в точку серии.
-        var byDay = daily.GroupBy(d => d.Date.Date).ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+        var stepHours = SeriesBuckets.StepHoursOf(period);
 
-        // Дни без потерь несут настоящий ноль — линии возвратов/отмен непрерывны
-        // по всему периоду (api.md, блоки 10–11).
-        var result = BuilderCommon
-            .DaysOf(period)
-            .Select(day => new SeriesPointModel(day, byDay.TryGetValue(day, out var value) ? value : 0m))
+        // Индекс «бакет → сумма потерь» для быстрой подстановления значения в точку серии.
+        var byBucket = daily.GroupBy(d => d.Date).ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
+
+        // Бакеты без потерь несут настоящий ноль — линии возвратов/отмен непрерывны
+        // по всему периоду; бакеты — сетка SeriesBuckets (api.md, блоки 10–11).
+        var result = SeriesBuckets
+            .BucketsOf(period)
+            .Select(bucket => new SeriesPointModel(
+                bucket,
+                bucket.AddHours(stepHours),
+                byBucket.TryGetValue(bucket, out var value) ? value : 0m))
             .ToList();
 
         return result;

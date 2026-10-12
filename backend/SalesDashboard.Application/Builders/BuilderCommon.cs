@@ -5,9 +5,8 @@ namespace SalesDashboard.Application.Builders;
 
 /// <summary>
 /// Общие константы и небольшие помощники для билдеров блоков: подписи наборов
-/// данных из ui.md, фабрики Δ, превращающие доменный <c>decimal?</c> в
-/// присутствие или отсутствие <see cref="DeltaModel"/>, и перечисление дней,
-/// по которому рисуются непрерывные серии.
+/// данных из ui.md и фабрики Δ, превращающие доменный <c>decimal?</c> в
+/// присутствие или отсутствие <see cref="DeltaModel"/>.
 /// </summary>
 internal static class BuilderCommon
 {
@@ -24,18 +23,6 @@ internal static class BuilderCommon
         internal const string AverageCheck = "Средний чек";
         internal const string SalesCount = "Кол-во продаж";
         internal const string Units = "Продано шт";
-    }
-
-    /// <summary>Каждый календарный день полуинтервала <c>[From, To)</c> в полночь UTC —
-    /// серии остаются непрерывными через дни без продаж (api.md, блок 6).</summary>
-    internal static IReadOnlyList<DateTime> DaysOf(DateRange period)
-    {
-        var days = new List<DateTime>();
-        
-        for (var day = period.From.Date; day < period.To; day = day.AddDays(1))
-            days.Add(day);
-
-        return days;
     }
 
     /// <summary>Относительная Δ как <see cref="DeltaModel"/>; вся модель

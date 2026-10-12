@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Макет нотификации — доработка кнопки «Обновить»</title>
+<style>
+  /*
+   * Макет нотификации. Стиль тоста зафиксирован (9–10): белый тост,
+   * радиус 8px, без полосы; акцент — контурный спиннер (уведомление) или
+   * контурная красная иконка «!» (ошибка), текст тёмный.
+   *
+   * Доработка кнопки «Обновить» (ui.md, 3A). Отбор прошла тройка:
+   * контурная красная (3), тонированная (2), нейтральная (5). Варианты:
+   *   1 — эталон: текущая контурная (для сравнения);
+   *   2 — контурная мягче: бледнее бордер, темнее текст;
+   *   3 — контурная плотнее: паддинг 4px 10px, радиус 6px, вес 600;
+   *   4 — тонированная с бордером (развитие 2);
+   *   5 — нейтральная серая с бордером (развитие 5);
+   *   6 — гибрид: нейтральная рамка + красный текст.
+   *
+   * Токены — app/globals.css; геометрия — docs/dashboard-states.html.
+   * Реализация в sonner: стили — toastOptions.style / per-toast style,
+   * спиннер — CSS-хук [data-type="loading"] в app/globals.css,
+   * кнопка — проп actionButtonStyle у <Toaster>.
+   */
+  :root {
+    --surface: #ffffff;
+    --text-primary: #1a1d24;
+    --border: #e0e3e8;
+    --accent: #3b82f6;
+    --danger: #ef4444;
+    --danger-deep: #b91c1c;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+
+  /* Дашборд-референс как фон: тосты показаны поверх живого макета. */
+  .dashboard-frame {
+    display: block;
+    width: 100%;
+    height: 100vh;
+    border: 0;
+    background: #fff;
+  }
+
+  /*
+   * База тоста (стиль 9–10): min-height 32px, радиус 8px, белый фон,
+   * нейтральный бордер, стек сверху по центру с шагом 40px.
+   */
+  .toast {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 200;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 12px;
+    max-width: calc(100vw - 32px);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
+  }
+
+  .toast-title { line-height: 1.25; font-weight: 500; color: var(--text-primary); }
+
+  /* Позиции: уведомление, затем шесть ошибок с разными кнопками. */
+  .pos-notify { top: 56px; }
+  .pos-1 { top: 96px; }
+  .pos-2 { top: 136px; }
+  .pos-3 { top: 176px; }
+  .pos-4 { top: 216px; }
+  .pos-5 { top: 256px; }
+  .pos-6 { top: 296px; }
+
+  /* Спиннер — контурная дуга без подложки. */
+  .toast-spinner {
+    flex-shrink: 0;
+    width: 13px;
+    height: 13px;
+    border: 2px solid rgba(59, 130, 246, 0.3);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  /* Иконка ошибки — контурный красный кружок со знаком «!». */
+  .toast-icon {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--danger);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--danger-deep);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /*
+   * Кнопка «Обновить»: общая база — шрифт 11px/500, радиус 5px, паддинг
+   * 3px 9px (как .toast-btn в docs/dashboard-states.html); варианты меняют
+   * рамку, заливку и геометрию.
+   */
+  .toast-btn {
+    flex-shrink: 0;
+    cursor: pointer;
+    margin-left: 4px;
+    padding: 3px 9px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.25;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+
+  /* 1 — эталон: текущая контурная. */
+  .btn-outline-red {
+    background: transparent;
+    border: 1px solid rgba(239, 68, 68, 0.5);
+    color: var(--danger-deep);
+  }
+
+  .btn-outline-red:hover { background: rgba(239, 68, 68, 0.08); }
+
+  /* 2 — контурная мягче: бледнее бордер, темнее текст. */
+  .btn-outline-soft {
+    background: transparent;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+    color: #991b1b;
+  }
+
+  .btn-outline-soft:hover {
+    background: rgba(239, 68, 68, 0.07);
+    border-color: rgba(239, 68, 68, 0.5);
+  }
+
+  /* 3 — контурная плотнее: крупнее геометрия, вес 600. */
+  .btn-outline-bold {
+    background: transparent;
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: var(--danger-deep);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-weight: 600;
+  }
+
+  .btn-outline-bold:hover { background: rgba(239, 68, 68, 0.08); }
+
+  /* 4 — тонированная с бордером (развитие варианта 2). */
+  .btn-tint-border {
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.28);
+    color: #991b1b;
+  }
+
+  .btn-tint-border:hover { background: rgba(239, 68, 68, 0.2); }
+
+  /* 5 — нейтральная серая с бордером (развитие варианта 5). */
+  .btn-neutral-border {
+    background: #f3f4f6;
+    border: 1px solid #e0e3e8;
+    color: var(--text-primary);
+  }
+
+  .btn-neutral-border:hover { background: #e9edf3; }
+
+  /* 6 — гибрид: нейтральная рамка + красный текст. */
+  .btn-hybrid {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--danger-deep);
+  }
+
+  .btn-hybrid:hover { background: #f9fafb; }
+
+  /* Легенда — внизу слева, чтобы не мешать сравнению. */
+  .legend {
+    position: fixed;
+    left: 16px;
+    bottom: 16px;
+    z-index: 200;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 12px;
+  }
+</style>
+</head>
+<body>
+
+  <!-- Уведомление (загрузка) — кнопки нет -->
+  <div class="toast pos-notify">
+    <div class="toast-spinner"></div>
+    <span class="toast-title">Обновление данных…</span>
+  </div>
+
+  <!-- Ошибка: 1 — эталон (текущая контурная) -->
+  <div class="toast pos-1">
+    <div class="toast-icon">!</div>
+    <span class="toast-title">Не удалось загрузить данные</span>
+    <button class="toast-btn btn-outline-red">Обновить</button>
+  </div>
+
+  <!-- Ошибка: 2 — контурная мягче -->
+  <div class="toast pos-2">
+    <div class="toast-icon">!</div>
+    <span class="toast-title">Не удалось загрузить данные</span>
+    <button class="toast-btn btn-outline-soft">Обновить</button>
+  </div>
+
+  <!-- Ошибка: 3 — контурная плотнее -->
+  <div class="toast pos-3">
+    <div class="toast-icon">!</div>
+    <span class="toast-title">Не удалось загрузить данные</span>
+    <button class="toast-btn btn-outline-bold">Обновить</button>
+  </div>
+
+  <!-- Ошибка: 4 — тонированная с бордером -->
+  <div class="toast pos-4">
+    <div class="toast-icon">!</div>
+    <span class="toast-title">Не удалось загрузить данные</span>
+    <button class="toast-btn btn-tint-border">Обновить</button>
+  </div>
+
+  <!-- Ошибка: 5 — нейтральная с бордером -->
+  <div class="toast pos-5">
+    <div class="toast-icon">!</div>
+    <span class="toast-title">Не удалось загрузить данные</span>
+    <button class="toast-btn btn-neutral-border">Обновить</button>
+  </div>
+
+  <!-- Ошибка: 6 — гибрид: нейтральная рамка + красный текст -->
+  <div class="toast pos-6">
+    <div class="toast-icon">!</div>
+    <span class="toast-title">Не удалось загрузить данные</span>
+    <button class="toast-btn btn-hybrid">Обновить</button>
+  </div>
+
+  <div class="legend">
+    Доработка кнопки: 1 — эталон (текущая контурная); 2 — бордер мягче,
+    текст темнее; 3 — плотнее геометрия (радиус 6, вес 600);
+    4 — тонированная с бордером; 5 — нейтральная с бордером;
+    6 — гибрид: нейтральная рамка + красный текст. Наведите для hover.
+  </div>
+
+  <iframe class="dashboard-frame" src="dashboard.html" title="Дашборд"></iframe>
+
+</body>
+</html>

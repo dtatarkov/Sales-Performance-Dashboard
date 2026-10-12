@@ -26,11 +26,4 @@ public class MetricThresholdsTests
     [InlineData(5, true)]
     public void CancellationSample_FloorIsFive(int resolved, bool expected)
         => Assert.Equal(expected, _thresholds.HasEnoughCancellationSample(resolved));
-
-    /// <summary>Минимум базы динамики = 5 заказов базового периода; 4 — недостаточно, 5 — достаточно.</summary>
-    [Theory]
-    [InlineData(4, false)]
-    [InlineData(5, true)]
-    public void DynamicsBase_FloorIsFive(int baseOrders, bool expected)
-        => Assert.Equal(expected, _thresholds.HasEnoughDynamicsBase(baseOrders));
 }

@@ -2,7 +2,7 @@ namespace SalesDashboard.Application.Abstractions.Queries;
 
 /// <summary>
 /// Источник блоков потерь (backend.md §4.3): событийные суммы возвратов и отмен,
-/// дневные серии и топы (возвраты — товары, отмены — менеджеры).
+/// серии по бакетам и топы (возвраты — товары, отмены — менеджеры).
 /// </summary>
 public interface ILossReadPort
 {

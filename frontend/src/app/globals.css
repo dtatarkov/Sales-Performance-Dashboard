@@ -1,0 +1,336 @@
+@import "tailwindcss";
+
+/*
+ * Дизайн-токены — из референс-макета docs/dashboard.html (:root).
+ * Tailwind v4 CSS-first: токены объявляются в @theme, классы утилит
+ * генерируются из них (bg-surface, text-secondary, …).
+ */
+:root {
+  --background: #f4f6f9;
+  --surface: #ffffff;
+  --border: #e0e3e8;
+  --text-primary: #1a1d24;
+  --text-secondary: #6b707a;
+  --text-tertiary: #9ca3af;
+  --accent: #3b82f6;
+  /* Мягкая заливка акцента (круги today/hover в календаре — макет
+     docs/datepicker-mockup.html). */
+  --accent-soft: rgba(59, 130, 246, 0.12);
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+
+  /*
+   * Оттенки из макетов без собственной семантики токенов выше: тёмный
+   * тултип чартов, подложка табов/кнопок, фон активной кнопки тулбара,
+   * трек мини-баров, мягкий разделитель строк потерь, красный для текста
+   * и обводок тостов (опять же из макетов).
+   */
+  --surface-inverse: #1a1d24;
+  --tab-surface: #f1f5f9;
+  --accent-surface: #eff6ff;
+  --track: #f3f4f6;
+  --divider-soft: #f0f1f3;
+  --danger-strong: #b91c1b;
+  --danger-outline: rgba(239, 68, 68, 0.5);
+  --danger-soft: rgba(239, 68, 68, 0.08);
+  --accent-ring: rgba(59, 130, 246, 0.3);
+
+  /* Типоразмеры карточек (ui.md, «Макет страницы») */
+  --card-height: 600px;
+  --kpi-height: 170px;
+  --card-sm-height: 450px;
+
+  /* Единая палитра (20 цветов): серии метрик, KPI-карточки, sparkline,
+     аватары, категории доната, точки продуктов (configuration/colorPalette.ts).
+     Вне @theme намеренно: Tailwind v4 вырезает из @theme переменные без
+     литеральных упоминаний в исходниках — палитра собирается динамически
+     (paletteColorOf), и «невырошенные» токены пропадали из CSS, сегменты
+     доната красились в чёрный. В plain :root токены не tree-shake'ятся. */
+  --color-palette-1: #3b82f6;
+  --color-palette-2: #10b981;
+  --color-palette-3: #f59e0b;
+  --color-palette-4: #8b5cf6;
+  --color-palette-5: #06b6d4;
+  --color-palette-6: #ec4899;
+  --color-palette-7: #84cc16;
+  --color-palette-8: #f97316;
+  --color-palette-9: #6b7280;
+  --color-palette-10: #d1d5db;
+  --color-palette-11: #ef4444;
+  --color-palette-12: #14b8a6;
+  --color-palette-13: #a855f7;
+  --color-palette-14: #0ea5e9;
+  --color-palette-15: #eab308;
+  --color-palette-16: #22c55e;
+  --color-palette-17: #f43f5e;
+  --color-palette-18: #6366f1;
+  --color-palette-19: #0891b2;
+  --color-palette-20: #64748b;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-inverse: var(--surface-inverse);
+  --color-border: var(--border);
+  --color-divider-soft: var(--divider-soft);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-accent: var(--accent);
+  --color-accent-surface: var(--accent-surface);
+  --color-success: var(--success);
+  --color-danger: var(--danger);
+  --color-danger-strong: var(--danger-strong);
+  --color-warning: var(--warning);
+  --color-tab-surface: var(--tab-surface);
+  --color-track: var(--track);
+
+  /*
+   * Длительность transition чартов (configuration/charts.ts, CHART_ANIMATION):
+   * Tailwind v4 генерирует duration-400 из этого токена — класс применяется
+   * к барам динамики/вклада и подписям Δ. Значение держать синхронным с
+   * CHART_ANIMATION.durationMs (recharts-анимации берут число напрямую).
+   */
+  --transition-duration-chart: 400ms;
+}
+
+body {
+  background: var(--background);
+  color: var(--text-primary);
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  min-width: 1200px;
+}
+
+/*
+ * recharts рисует поверх svg таблицы/обёртки, получающие фокус при клике
+ * (mousedown) — браузер рисует на них focus-outline. График не интерактивный
+ * элемент ввода: outline у чартов отключён. Селекторы покрывают обёртку,
+ * svg и внутренние svg-элементы (g.recharts-layer, сектора Pie — каждый
+ * получает focus при клике); div-потомки обёртки (tooltip) не трогаем —
+ * интерактивные контролы внутри чарта должны сохранять видимый фокус.
+ */
+.recharts-wrapper:focus,
+.recharts-wrapper:focus-visible,
+.recharts-surface:focus,
+.recharts-surface:focus-visible,
+.recharts-wrapper svg :focus,
+.recharts-wrapper svg :focus-visible {
+  outline: none;
+}
+
+/*
+ * Прорисовка спарклайна (components/data/Sparkline.tsx): линия «рисуется»
+ * слева направо через растущий clip-прямоугольник (не stroke-dasharray —
+ * dash с нулевым зазором оставлял дыры на коллинеарных сегментах, типично
+ * для рядов потерь с длинными нулевыми плато). Длительность берётся из
+ * токена чартов (--transition-duration-chart → configuration/charts.ts,
+ * CHART_ANIMATION.durationMs — три места держать синхронными); анимация
+ * перезапускается сменой key у rect (React пересоздаёт элемент).
+ */
+@keyframes chart-line-clip {
+  from {
+    transform: scaleX(0);
+  }
+
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.sparkline-clip {
+  transform-origin: left;
+  animation: chart-line-clip var(--transition-duration-chart, 400ms) ease-out;
+}
+
+/*
+ * Тосты статуса дашборда (toast.* в widgets/toasts) — утверждённый макет
+ * docs/toast-notification.html (стиль 9–10): белый тост, акцент уровня
+ * несёт только контурная иконка без подложки; штатные svg-иконки sonner
+ * скрываются, хук — data-type, который sonner ставит на тост.
+ *
+ * Специфичность: sonner вставляет свои стили в рантайме после globals.css,
+ * и его правила на [data-icon] (justify-content, размер, отрицательные
+ * маргины) при равной специфичности побеждают. Префикс [data-sonner-toaster]
+ * поднимает специфичность наших правил — они применяются независимо от
+ * порядка подключения.
+ *
+ * Ширина: контейнер sonner жёстко задаёт --width: 356px inline-стилем —
+ * длинное сообщение состояния 3B не помещается в одну строку, поэтому
+ * переменная перекрывается важным объявлением (сильнее inline). Сам тост
+ * шириной по содержимому и отцентрирован авто-маргинами (Toaster.tsx).
+ */
+[data-sonner-toaster] {
+  --width: 640px !important;
+}
+
+/* Загрузка: контурная синяя дуга 13px. */
+[data-sonner-toaster]
+  [data-sonner-toast][data-type="loading"]
+  [data-icon] {
+  width: 13px;
+  height: 13px;
+  margin-left: 0;
+  margin-right: 0;
+  justify-content: center;
+}
+
+[data-sonner-toaster]
+  [data-sonner-toast][data-type="loading"]
+  [data-icon]
+  .sonner-loading-wrapper {
+  display: none;
+}
+
+[data-sonner-toaster]
+  [data-sonner-toast][data-type="loading"]
+  [data-icon]::after {
+  content: "";
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--accent-ring);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: toast-spinner-spin 0.8s linear infinite;
+}
+
+/* Ошибка: контурный красный кружок 16px со знаком «!». */
+[data-sonner-toaster] [data-sonner-toast][data-type="error"] [data-icon] {
+  width: 16px;
+  height: 16px;
+  margin-left: 0;
+  margin-right: 0;
+  border: 2px solid var(--danger);
+  border-radius: 50%;
+  justify-content: center;
+}
+
+[data-sonner-toaster]
+  [data-sonner-toast][data-type="error"]
+  [data-icon]
+  svg {
+  display: none;
+}
+
+[data-sonner-toaster]
+  [data-sonner-toast][data-type="error"]
+  [data-icon]::after {
+  content: "!";
+  color: var(--danger-strong);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/*
+ * Кнопка «Обновить» — контурная красная (рамка и цвета — inline в
+ * Toaster.tsx): заливка при наведении; inline-фон перекрывается только
+ * важным объявлением.
+ */
+[data-sonner-toast] [data-button]:hover {
+  background: var(--danger-soft) !important;
+}
+
+@keyframes toast-spinner-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/*
+ * Календарь DateRangePicker (react-day-picker v9, макет
+ * docs/datepicker-mockup.html). Модификаторы rdp (selected/today/range_*)
+ * вешаются на ячейку дня (.rdp-day, 44×44), кнопка внутри — круг 42px; ячейки
+ * соприкасаются, поэтому лента диапазона красится на ячейках и непрерывна.
+ * Все правила prefixed .rdp-day — специфичность выше дефолтов style.css
+ * (.rdp-today:not(.rdp-outside) и пр.) независимо от порядка CSS.
+ * Круги — радиальные градиенты на кнопке: фон под текстом, число не
+ * перекрывается; диаметр фиксирован независимо от формы ячейки.
+ */
+
+/*
+ * Лента диапазона: сплошная синяя заливка ячеек, текст белый. Shorthand
+ * background (не background-color) — rdp красит ячейки range_start/end
+ * градиентом (верх transparent, низ бледный — «белые блоки»), shorthand
+ * сбрасывает и его. Префикс .rdp поднимает специфичность выше правила
+ * .rdp-range_start.rdp-range_end { background: revert } — иначе первый
+ * клик (однодневный выбор) теряет подсветку.
+ */
+.rdp-root .rdp-day.rdp-selected,
+.rdp-root .rdp-day.rdp-range_start,
+.rdp-root .rdp-day.rdp-range_end,
+.rdp-root .rdp-day.rdp-range_middle {
+  background: var(--accent);
+  color: #fff;
+}
+
+/*
+ * Кнопки дней: прозрачный фон без рамки и шрифт 13px (макет .day).
+ * rdp красит кнопки range_start/range_end синими кругами и selected —
+ * рамкой; его стили грузятся после globals.css и при равной специфичности
+ * выигрывают порядок, поэтому сброс объявлен important. Фон прозрачен —
+ * ленту рисуют только ячейки (непрерывный интервал со скруглением концов);
+ * круги today/hover — background-image поверх прозрачного фона, они не
+ * задействуют background-color и остаются работать.
+ */
+.rdp-day .rdp-day_button {
+  background-color: transparent !important;
+  border: none !important;
+  font-size: 13px;
+}
+
+/* today вне диапазона: бледно-голубой круг 40px (1px зазор до кнопки 42px). */
+.rdp-day.rdp-today .rdp-day_button {
+  color: var(--text-primary);
+  background-image: radial-gradient(
+    circle,
+    var(--accent-soft) 0 20px,
+    transparent 20.5px
+  );
+}
+
+/* today на конце/внутри ленты: день белый, маркер — полупрозрачно-белый
+   круг поверх синей заливки (синего остаётся ~1px вокруг круга). */
+.rdp-day.rdp-today.rdp-range_start .rdp-day_button,
+.rdp-day.rdp-today.rdp-range_end .rdp-day_button,
+.rdp-day.rdp-today.rdp-range_middle .rdp-day_button {
+  color: #fff;
+  background-image: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.3) 0 20px,
+    transparent 20.5px
+  );
+}
+
+/* Hover внутри ленты — полупрозрачно-белый круг, как маркер today. */
+.rdp-day.rdp-selected:hover .rdp-day_button {
+  background-image: radial-gradient(
+    circle,
+    rgba(255, 255, 255, 0.3) 0 20px,
+    transparent 20.5px
+  );
+}
+
+/* Hover обычного дня — голубой круг 34px. */
+.rdp-day:not(.rdp-selected):not(.rdp-range_start):not(.rdp-range_end):not(
+    .rdp-range_middle
+  ):not(.rdp-disabled):hover
+  .rdp-day_button {
+  background-image: radial-gradient(
+    circle,
+    var(--accent-soft) 0 17px,
+    transparent 17.5px
+  );
+}
+
+/* Будущие дни: серые, некликабельные; rdp сам ставит opacity (0.5). */
+.rdp-day.rdp-disabled .rdp-day_button {
+  color: var(--text-tertiary);
+  cursor: default;
+}

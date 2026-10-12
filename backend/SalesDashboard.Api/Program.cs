@@ -12,6 +12,7 @@ builder.Services.AddApi();
 var app = builder.Build();
 
 app.UseExceptionHandler();
+app.UseCors();
 
 if (app.Environment.IsDevelopment())
 {

@@ -10,5 +10,5 @@ public sealed class TimeSeriesDtoMapper : IApiMapper<TimeSeriesModel, TimeSeries
         => new(source.Datasets.Select(d => SharedDtoMapper.MapDataset(d, MapPoint)).ToList());
 
     private static TimeSeriesPointDto MapPoint(TimeSeriesPointModel point)
-        => new(point.Date, point.ValueCurrent, point.ValuePrevious);
+        => new(point.DateFrom, point.DateTo, point.ValueCurrent, point.ValuePrevious);
 }

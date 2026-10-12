@@ -27,6 +27,15 @@ public sealed class DashboardRequestValidator
         if (request.From is not null && request.To is not null && request.From >= request.To)
             errors.Add(new ValidationError("from", "PERIOD_INVALID_ORDER", "'from' must be earlier than 'to'"));
 
+        // Сетка бакетов серий якорится на полночь и определена только для
+        // целодневных периодов (api.md, «Сетка бакетов серий»); нецелые границы
+        // молча отрезали бы крайние часы периода от всех метрик.
+        if (request.From is not null && request.From.Value.TimeOfDay != TimeSpan.Zero)
+            errors.Add(new ValidationError("from", "PERIOD_NOT_DAY_ALIGNED", "'from' must be a calendar day boundary (midnight UTC)"));
+
+        if (request.To is not null && request.To.Value.TimeOfDay != TimeSpan.Zero)
+            errors.Add(new ValidationError("to", "PERIOD_NOT_DAY_ALIGNED", "'to' must be a calendar day boundary (midnight UTC)"));
+
         // System.Text.Json биндит любое число в enum без проверки, что значение
         // определено, поэтому сегмент вне диапазона отсекается здесь (backend.md §6.2).
         if (request.Segment is not null && !Enum.IsDefined(request.Segment.Value))

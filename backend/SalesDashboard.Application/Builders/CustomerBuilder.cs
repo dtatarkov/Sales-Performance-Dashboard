@@ -120,52 +120,141 @@ public sealed class CustomerBuilder(
     }
 
     /// <summary>
-    /// Динамика клиентов: после порога «достаточной базы» строки ранжируются по
-    /// размаху ВП и среднего чека между периодами (domain.md, «Dyn Min Base Orders»).
+    /// Динамика клиентов: строки с честной базой делятся на секции «Рост» и
+    /// «Падение» — топ-<c>Dyn Top N</c> по абсолютной Δ в каждой (domain.md,
+    /// «Динамика клиентов»). Честная база = обе относительные Δ вычислимы: счётчик
+    /// оплат недостаточен, потому что целиком возвращённая оплата входит в
+    /// PaidCount, но даёт нулевую денежную базу (Revenue/GP = 0) → Δ = null,
+    /// а строка с прочерком вместо относительной Δ в секции бессмысленна
+    /// (domain.md, пустой знаменатель). В секции те же два датасета метрик;
+    /// нормирование бара — к максимуму своей секции датасета.
     /// </summary>
     private CustomerDynamicsModel BuildDynamics(IReadOnlyList<CustomerRow> rows)
     {
-        // Выживают только клиенты с достаточным числом заказов в базовом периоде —
-        // маленькие выборки резко колеблются и затопили бы сигнал (domain.md, «Dyn Min Base Orders»).
-        var eligible = rows
-            .Where(r => thresholds.HasEnoughDynamicsBase(r.PreviousOrderCount))
+        // Фильтр честной базы: обе относительные Δ существуют → в любой
+        // секции у строки будет заполненная Δ, а не прочерк.
+        var comparable = rows
+            .Where(r => r.GrossProfitDelta is not null && r.AverageCheckDelta is not null)
             .ToList();
 
-        var grossProfitDataset = BuildGrossProfitDynamicsDataset(eligible);
-        var averageCheckDataset = BuildAverageCheckDynamicsDataset(eligible);
+        var topN = thresholds.DynTopN;
 
-        var model = new CustomerDynamicsModel([grossProfitDataset, averageCheckDataset]);
+        var grossProfitGrowth = GrowthSectionOf(comparable, r => r.GrossProfitSwing, r => r.Name, topN);
+        var averageCheckGrowth = GrowthSectionOf(comparable, r => r.AverageCheckSwing, r => r.Name, topN);
+        var grossProfitDecline = DeclineSectionOf(comparable, r => r.GrossProfitSwing, r => r.Name, topN);
+        var averageCheckDecline = DeclineSectionOf(comparable, r => r.AverageCheckSwing, r => r.Name, topN);
+
+        var grossProfitGrowthMax = MaxSwingOf(grossProfitGrowth, r => r.GrossProfitSwing);
+        var averageCheckGrowthMax = MaxSwingOf(averageCheckGrowth, r => r.AverageCheckSwing);
+        var grossProfitDeclineMax = MaxSwingOf(grossProfitDecline, r => r.GrossProfitSwing);
+        var averageCheckDeclineMax = MaxSwingOf(averageCheckDecline, r => r.AverageCheckSwing);
+
+        var grossProfitGrowthItems = ToItems(grossProfitGrowth, r => new CustomerDynamicsItemModel(
+            r.Id, r.Name, NormalizedSwing(r.GrossProfitSwing, grossProfitGrowthMax),
+            r.GrossProfitSwing, r.GrossProfitDelta));
+
+        var averageCheckGrowthItems = ToItems(averageCheckGrowth, r => new CustomerDynamicsItemModel(
+            r.Id, r.Name, NormalizedSwing(r.AverageCheckSwing, averageCheckGrowthMax),
+            r.AverageCheckSwing, r.AverageCheckDelta));
+
+        var grossProfitDeclineItems = ToItems(grossProfitDecline, r => new CustomerDynamicsItemModel(
+            r.Id, r.Name, NormalizedSwing(Math.Abs(r.GrossProfitSwing), grossProfitDeclineMax),
+            r.GrossProfitSwing, r.GrossProfitDelta));
+
+        var averageCheckDeclineItems = ToItems(averageCheckDecline, r => new CustomerDynamicsItemModel(
+            r.Id, r.Name, NormalizedSwing(Math.Abs(r.AverageCheckSwing), averageCheckDeclineMax),
+            r.AverageCheckSwing, r.AverageCheckDelta));
+
+        var growth = new List<DatasetModel<CustomerDynamicsItemModel>>
+        {
+            new(BuilderCommon.DatasetNames.GrossProfit, grossProfitGrowthItems),
+            new(BuilderCommon.DatasetNames.AverageCheck, averageCheckGrowthItems),
+        };
+
+        var decline = new List<DatasetModel<CustomerDynamicsItemModel>>
+        {
+            new(BuilderCommon.DatasetNames.GrossProfit, grossProfitDeclineItems),
+            new(BuilderCommon.DatasetNames.AverageCheck, averageCheckDeclineItems),
+        };
+
+        var model = new CustomerDynamicsModel(growth, decline);
 
         return model;
     }
 
-    /// <summary>Датасет динамики «Валовая прибыль»: ранжирование по размаху ВП между периодами.</summary>
-    private DatasetModel<CustomerDynamicsItemModel> BuildGrossProfitDynamicsDataset(IReadOnlyList<CustomerRow> eligible)
+    /// <summary>
+    /// Секция роста одного датасета: клиенты с положительным размахом метрики,
+    /// топ-N по убыванию размаха.
+    /// </summary>
+    private IReadOnlyList<CustomerRow> GrowthSectionOf(
+        IReadOnlyList<CustomerRow> rows,
+        Func<CustomerRow, decimal> swing,
+        Func<CustomerRow, string> name,
+        int topN)
     {
-        var byGrossProfit = ranking.OrderByMetricDescending(
-            eligible, r => r.GrossProfitSwing, revenueTieBreak: null, name: r => r.Name);
-
-        var items = byGrossProfit
-            .Select(r => new CustomerDynamicsItemModel(
-                r.Id, r.Name, r.GrossProfitSwing, r.GrossProfitDelta))
+        var positive = rows
+            .Where(r => swing(r) > 0m)
             .ToList();
 
-        return new DatasetModel<CustomerDynamicsItemModel>(BuilderCommon.DatasetNames.GrossProfit, items);
-    }
+        var ranked = ranking.OrderByMetricDescending(positive, swing, revenueTieBreak: null, name);
 
-    /// <summary>Датасет динамики «Средний чек»: ранжирование по размаху среднего чека между периодами.</summary>
-    private DatasetModel<CustomerDynamicsItemModel> BuildAverageCheckDynamicsDataset(IReadOnlyList<CustomerRow> eligible)
-    {
-        var byAverageCheck = ranking.OrderByMetricDescending(
-            eligible, r => r.AverageCheckSwing, revenueTieBreak: null, name: r => r.Name);
-
-        var items = byAverageCheck
-            .Select(r => new CustomerDynamicsItemModel(
-                r.Id, r.Name, r.AverageCheckSwing, r.AverageCheckDelta))
+        var section = ranked
+            .Take(topN)
             .ToList();
 
-        return new DatasetModel<CustomerDynamicsItemModel>(BuilderCommon.DatasetNames.AverageCheck, items);
+        return section;
     }
+
+    /// <summary>
+    /// Секция падения одного датасета: клиенты с отрицательным размахом
+    /// метрики, топ-N по возрастанию размаха (от большего минуса к нулю).
+    /// </summary>
+    private IReadOnlyList<CustomerRow> DeclineSectionOf(
+        IReadOnlyList<CustomerRow> rows,
+        Func<CustomerRow, decimal> swing,
+        Func<CustomerRow, string> name,
+        int topN)
+    {
+        var negative = rows
+            .Where(r => swing(r) < 0m)
+            .ToList();
+
+        var ranked = ranking.OrderByMetricAscending(negative, swing, revenueTieBreak: null, name);
+
+        var section = ranked
+            .Take(topN)
+            .ToList();
+
+        return section;
+    }
+
+    /// <summary>Переносит строки секции в item'ы по фабрике (нормирование — внутри фабрики).</summary>
+    private IReadOnlyList<CustomerDynamicsItemModel> ToItems(
+        IReadOnlyList<CustomerRow> rows,
+        Func<CustomerRow, CustomerDynamicsItemModel> toItem)
+    {
+        var items = rows
+            .Select(toItem)
+            .ToList();
+
+        return items;
+    }
+
+    /// <summary>
+    /// Максимум модуля размаха по секции — база нормирования баров
+    /// (макет renderClientDynamics: len = |d| / maxAbs · halfW).
+    /// </summary>
+    private static decimal MaxSwingOf(IReadOnlyList<CustomerRow> rows, Func<CustomerRow, decimal> swing)
+        => rows.Count == 0 ? 0m : rows.Max(r => Math.Abs(swing(r)));
+
+    /// <summary>
+    /// Длина бара 0–100: модуль размаха, нормированный к максимуму секции.
+    /// Нормирование к относительной Δ (clamp ±100) непригодно: у
+    /// неаддитивного среднего чека почти все строки прижимаются к потолку —
+    /// бары одинаковой длины, а порядок при равенстве решается по имени.
+    /// </summary>
+    private static decimal NormalizedSwing(decimal swing, decimal maxSwing)
+        => maxSwing == 0m ? 0m : swing / maxSwing * 100m;
 
     /// <summary>
     /// Соединяет текущие агрегаты клиента с предыдущими и выводит все метрики
@@ -219,13 +308,9 @@ public sealed class CustomerBuilder(
             RefundRateDelta: deltas.PointsDelta(refundRate, previousRefundRate),
             CancellationRate: cancellationRate,
             CancellationRateDelta: deltas.PointsDelta(cancellationRate, previousCancellationRate),
-            GrossProfitSwing: Swing(deltas.PercentDelta(currentMetrics.GrossProfit, previousMetrics.GrossProfit)),
-            AverageCheckSwing: Swing(deltas.PercentDelta(currentMetrics.AverageCheck ?? 0m, previousMetrics.AverageCheck ?? 0m)));
+            GrossProfitSwing: currentMetrics.GrossProfit - previousMetrics.GrossProfit,
+            AverageCheckSwing: (currentMetrics.AverageCheck ?? 0m) - (previousMetrics.AverageCheck ?? 0m));
     }
-
-    /// <summary>Знаковое значение бара −100…100: относительная Δ, прижатая к диапазону графика.</summary>
-    private static decimal Swing(DeltaModel? delta)
-        => delta is null ? 0m : Math.Clamp(delta.Value, -100m, 100m);
 
     private ContributionModel GrossProfitContribution(CustomerRow row, decimal totalGrossProfit, decimal maxGrossProfit)
         => new(
@@ -254,7 +339,12 @@ public sealed class CustomerBuilder(
 
     private const int TopN = BuilderCommon.TopN;
 
-    /// <summary>Внутренняя строка одного клиента: агрегаты + выведенные метрики и Δ.</summary>
+    /// <summary>
+    /// Внутренняя строка одного клиента: агрегаты + выведенные метрики и Δ.
+    /// <c>OrderCount</c>/<c>PreviousOrderCount</c> — счётчики оплат в блоках
+    /// топа; фильтр динамики опирается на вычислимость Δ, а не на счётчики
+    /// (целиком возвращённая оплата входит в счётчик, но даёт нулевую базу).
+    /// </summary>
     private sealed record CustomerRow(
         Guid Id,
         string Name,

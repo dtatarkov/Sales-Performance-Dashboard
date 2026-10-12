@@ -44,8 +44,10 @@ public sealed record ManagerComparisonModel(
 /// Один бар графика сравнения (api.md, <c>ManagerComparisonItemModel</c>).
 /// </summary>
 /// <param name="Value">Метрика активного набора — валовая прибыль или средний чек.</param>
+/// <param name="Team">Команда менеджера (подпись под именем на оси Y).</param>
 public sealed record ManagerComparisonItemModel(
     Guid Id,
     string Name,
+    string Team,
     decimal Value,
     DeltaModel? Delta);

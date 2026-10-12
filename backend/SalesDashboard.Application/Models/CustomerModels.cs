@@ -32,20 +32,25 @@ public sealed record CustomerTopItemModel(
     ContributionModel Contribution);
 
 /// <summary>
-/// Динамика клиентов (api.md, блок 5): полный список клиентов, прошедших
-/// <c>Dyn Min Base Orders</c>, упорядоченный по их изменению. UI нарезает его на
-/// секции «Рост» и «Спад» по <c>Dyn Top N</c> в каждой.
+/// Динамика клиентов (ui.md, блок 5): две готовые секции — «Рост» и «Падение».
+/// В каждой секции те же два датасета метрик («Валовая прибыль», «Средний
+/// чек»), а внутри датасета — готовый топ-<c>Dyn Top N</c> по абсолютной Δ.
+/// Сервер сам фильтрует, ранжирует и режет секции; клиент готовые числа не
+/// разбирает (frontend.md, «Бизнес-логики на клиенте нет»).
 /// </summary>
 public sealed record CustomerDynamicsModel(
-    IReadOnlyList<DatasetModel<CustomerDynamicsItemModel>> Datasets);
+    IReadOnlyList<DatasetModel<CustomerDynamicsItemModel>> Growth,
+    IReadOnlyList<DatasetModel<CustomerDynamicsItemModel>> Decline);
 
 /// <summary>
-/// Покачивание одного клиента между периодами (api.md, <c>CustomerDynamicsItemModel</c>).
+/// Строка секции динамики клиентов (ui.md, блок 5).
 /// </summary>
-/// <param name="Value">Нормализованная дельта, −100…100; знак — направление (вверх = рост).</param>
-/// <param name="Delta">Относительная дельта, печатается рядом с баром; <c>null</c>, когда базовая метрика пуста.</param>
+/// <param name="Value">Длина бара, 0–100 — доля максимума своей секции датасета.</param>
+/// <param name="AbsoluteDelta">Абсолютная разность метрик между периодами, печатается первой строкой у бара.</param>
+/// <param name="Delta">Относительная дельта, печатается второй строкой у бара; <c>null</c>, когда базовая метрика пуста.</param>
 public sealed record CustomerDynamicsItemModel(
     Guid Id,
     string Name,
     decimal Value,
+    decimal AbsoluteDelta,
     DeltaModel? Delta);

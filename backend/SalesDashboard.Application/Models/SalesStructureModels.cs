@@ -1,19 +1,21 @@
 namespace SalesDashboard.Application.Models;
 
 /// <summary>
-/// Дневная динамика (api.md, блок 6). Три набора данных — выручка, валовая
+/// Динамика во времени (api.md, блок 6). Три набора данных — выручка, валовая
 /// прибыль, число продаж — каждый непрерывная серия по активному периоду.
 /// </summary>
 public sealed record TimeSeriesModel(IReadOnlyList<DatasetModel<TimeSeriesPointModel>> Datasets);
 
 /// <summary>
-/// Один день графика (api.md, <c>TimeSeriesPointModel</c>).
+/// Один бакет сетки серий (api.md, <c>TimeSeriesPointModel</c>).
 /// </summary>
-/// <param name="Date">День, к которому относится точка.</param>
-/// <param name="ValueCurrent">Сплошная линия: значение внутри активного периода. Дни без продаж несут 0, чтобы линия оставалась непрерывной.</param>
-/// <param name="ValuePrevious">Пунктирная линия: тот же день предыдущего периода. Периоды всегда равны по длительности, поэтому значение не бывает null.</param>
+/// <param name="DateFrom">Начало полуинтервала [DateFrom, DateTo) — бакет сетки серий.</param>
+/// <param name="DateTo">Конец полуинтервала (не включается); у последнего бакета — конец периода.</param>
+/// <param name="ValueCurrent">Сплошная линия: значение внутри активного периода. Бакеты без продаж несут 0, чтобы линия оставалась непрерывной.</param>
+/// <param name="ValuePrevious">Пунктирная линия: парный бакет предыдущего периода. Периоды всегда равны по длительности, поэтому значение не бывает null.</param>
 public sealed record TimeSeriesPointModel(
-    DateTime Date,
+    DateTime DateFrom,
+    DateTime DateTo,
     decimal ValueCurrent,
     decimal? ValuePrevious);
 

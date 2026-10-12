@@ -18,6 +18,17 @@ public static class ServiceCollectionExtensions
         services.AddProblemDetails();
         services.AddExceptionHandler<GlobalExceptionHandler>();
 
+        // CORS для браузерного frontend: SPA на localhost:3000 (dev-прогон и
+        // docker compose) обращается к API напрямую. Авторизации нет
+        // (api.md), поэтому достаточно политики с явным списком источников.
+        services.AddCors(options =>
+        {
+            options.AddDefaultPolicy(policy =>
+                policy.WithOrigins("http://localhost:3000")
+                    .AllowAnyHeader()
+                    .AllowAnyMethod());
+        });
+
         services.AddEndpointsApiExplorer();
         services.AddSwaggerGen();
 

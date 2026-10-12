@@ -1,4 +1,9 @@
 namespace SalesDashboard.Api.Dtos;
 
-/// <summary>Block 5 — customer dynamics (api.md, CustomerDynamicsDto).</summary>
-public sealed record CustomerDynamicsDto(IReadOnlyList<DatasetDto<CustomerDynamicsItemDto>> Datasets);
+/// <summary>
+/// Блок 5 — динамика клиентов (ui.md §5): две готовые секции — «Рост» и
+/// «Падение»; в каждой те же два датасета метрик, внутри — топ-5 (Dyn Top N).
+/// </summary>
+public sealed record CustomerDynamicsDto(
+    IReadOnlyList<DatasetDto<CustomerDynamicsItemDto>> Growth,
+    IReadOnlyList<DatasetDto<CustomerDynamicsItemDto>> Decline);

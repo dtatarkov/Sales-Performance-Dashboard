@@ -14,9 +14,6 @@ public sealed record MetricThresholds
     /// <summary>Минимальная выборка отмен: закрытые сделки на менеджера, ниже которых доля не печатается.</summary>
     public int CancellationMinSample { get; init; } = 5;
 
-    /// <summary>Минимальная база динамики: заказы базового периода, необходимые для блока динамики клиентов.</summary>
-    public int DynMinBaseOrders { get; init; } = 5;
-
     /// <summary>Топ N динамики: размер секций «Рост» / «Спад».</summary>
     public int DynTopN { get; init; } = 5;
 
@@ -28,8 +25,5 @@ public sealed record MetricThresholds
 
     /// <summary>Достаточно ли закрытых сделок за долей отмен, чтобы её печатать.</summary>
     public bool HasEnoughCancellationSample(int resolvedCount) => resolvedCount >= CancellationMinSample;
-
-    /// <summary>Проходит ли клиент в блок динамики по объёму базового периода.</summary>
-    public bool HasEnoughDynamicsBase(int baseOrderCount) => baseOrderCount >= DynMinBaseOrders;
 }
 

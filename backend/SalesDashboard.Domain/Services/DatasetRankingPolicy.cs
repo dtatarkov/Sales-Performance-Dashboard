@@ -19,6 +19,19 @@ public interface IDatasetRankingPolicy
         Func<T, decimal> metric,
         Func<T, decimal>? revenueTieBreak,
         Func<T, string> name);
+
+    /// <summary>
+    /// Упорядочивает элементы по <paramref name="metric"/> по возрастанию
+    /// (например, секция «Падение»: от большего минуса к нулю). Разрешение
+    /// ничьих зеркально убывающей сортировке: при переданном
+    /// <paramref name="revenueTieBreak"/> равная метрика разрешается выручкой
+    /// (по возрастанию), затем имя А→Я; без него — сразу имя А→Я.
+    /// </summary>
+    IReadOnlyList<T> OrderByMetricAscending<T>(
+        IEnumerable<T> items,
+        Func<T, decimal> metric,
+        Func<T, decimal>? revenueTieBreak,
+        Func<T, string> name);
 }
 
 /// <summary>
@@ -41,6 +54,20 @@ public sealed class DatasetRankingPolicy : IDatasetRankingPolicy
 
         if (revenueTieBreak is not null)
             ordered = ordered.ThenByDescending(revenueTieBreak);
+
+        return ordered.ThenBy(name, NameComparer).ToList();
+    }
+
+    public IReadOnlyList<T> OrderByMetricAscending<T>(
+        IEnumerable<T> items,
+        Func<T, decimal> metric,
+        Func<T, decimal>? revenueTieBreak,
+        Func<T, string> name)
+    {
+        var ordered = items.OrderBy(metric);
+
+        if (revenueTieBreak is not null)
+            ordered = ordered.ThenBy(revenueTieBreak);
 
         return ordered.ThenBy(name, NameComparer).ToList();
     }

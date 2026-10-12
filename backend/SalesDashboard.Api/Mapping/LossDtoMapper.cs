@@ -36,5 +36,5 @@ public sealed class LossDtoMapper :
         => new(item.Id, item.Name, item.Category ?? string.Empty, item.ValueAbsolute, item.ValueRelative, item.ValueNormalized);
 
     private static CancellationTopItemDto MapCancellationItem(LossItemModel item)
-        => new(item.Id, item.Name, item.ValueAbsolute, item.ValueRelative, item.ValueNormalized);
+        => new(item.Id, item.Name, item.Team ?? string.Empty, item.ValueAbsolute, item.ValueRelative, item.ValueNormalized);
 }

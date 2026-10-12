@@ -1,9 +1,10 @@
 namespace SalesDashboard.Application.Abstractions.Queries;
 
 /// <summary>
-/// Один день оплаченной когорты — питает спарклайны KPI и блок временных рядов.
+/// Один бакет сетки серий (<see cref="SeriesBuckets"/>) по оплаченной когорте —
+/// питает спарклайны KPI и блок временных рядов.
 /// </summary>
-/// <param name="Date">Начало дня в UTC.</param>
+/// <param name="Date">Начало бакета в UTC (день или час от начала периода).</param>
 public sealed record DailyAggregateRow(
     DateTime Date,
     decimal Revenue,

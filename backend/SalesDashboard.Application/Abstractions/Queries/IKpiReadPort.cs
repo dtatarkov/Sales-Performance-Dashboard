@@ -1,8 +1,8 @@
 namespace SalesDashboard.Application.Abstractions.Queries;
 
 /// <summary>
-/// Источник блока KPI (backend.md §4.3): итоги периода и дневная серия за
-/// спарклайнами. Только суммы и количества — отношения и Δ относятся к домену.
+/// Источник блока KPI (backend.md §4.3): итоги периода и серия по бакетам
+/// для спарклайнов. Только суммы и количества — отношения и Δ относятся к домену.
 /// </summary>
 public interface IKpiReadPort
 {

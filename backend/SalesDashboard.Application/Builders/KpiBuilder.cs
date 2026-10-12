@@ -11,11 +11,12 @@ public interface IKpiBuilder
 }
 
 /// <summary>
-/// Строит KPI-карточки из сырых итогов периода и дневных строк. Доменные
+/// Строит KPI-карточки из сырых итогов периода и строк бакетов. Доменные
 /// калькуляторы выводят маржу, средний чек и каждую Δ; билдер только собирает
-/// карточки. Серии денег/количеств печатают дни без продаж нулём (настоящий
-/// ноль), тогда как серии маржи и среднего чека такие дни пропускают — их
-/// значение там не определено, а не равно нулю (domain.md, «Недостаточность данных»).
+/// карточки. Серии денег/количеств печатают бакеты без продаж нулём (настоящий
+/// ноль; бакеты — сетка <see cref="SeriesBuckets"/>), тогда как серии маржи и
+/// среднего чека такие бакеты пропускают — их значение там не определено,
+/// а не равно нулю (domain.md, «Недостаточность данных»).
 /// </summary>
 public sealed class KpiBuilder(
     IKpiReadPort kpiPort,
@@ -34,7 +35,7 @@ public sealed class KpiBuilder(
         // Δ всех карточек сравнивает базы одного размера (domain.md).
         var previous = new ReadFilter(periodResolver.Previous(query.Period), query.Segment);
 
-        // Итоги обоих периодов (суммы, счётчики) и дневной ряд текущего.
+        // Итоги обоих периодов (суммы, счётчики) и ряд по бакетам текущего.
         var totals = await kpiPort.ReadTotalsAsync(current, cancellationToken);
         var previousTotals = await kpiPort.ReadTotalsAsync(previous, cancellationToken);
         var daily = await kpiPort.ReadDailyAsync(current, cancellationToken);
@@ -46,34 +47,34 @@ public sealed class KpiBuilder(
         // Лидер периода — отдельный подблок с собственными чтениями.
         var bestManager = await BuildBestManagerAsync(current, previous, cancellationToken);
 
-        // Деньги и счётчик — непрерывные серии с нулями в пустые дни; маржа и
-        // средний чек в пустые дни не определены (0/0), поэтому их серии sparse.
+        // Деньги и счётчик — непрерывные серии с нулями в пустых бакетах; маржа
+        // и средний чек в пустых бакетах не определены (0/0), поэтому их серии sparse.
         var model = new KpiModel(
-            // Выручка: сумма периода, Δ%, непрерывная серия по дням.
+            // Выручка: сумма периода, Δ%, непрерывная серия по бакетам.
             Revenue: new KpiCardModel(
                 totals.Revenue,
                 deltas.PercentDelta(totals.Revenue, previousTotals.Revenue),
                 ContinuousSeries(query.Period, daily, d => d.Revenue)),
-            // Валовая прибыль: из калькулятора, Δ%, серия Revenue − Cost по дням.
+            // Валовая прибыль: из калькулятора, Δ%, серия Revenue − Cost по бакетам.
             GrossProfit: new KpiCardModel(
                 currentMetrics.GrossProfit,
                 deltas.PercentDelta(currentMetrics.GrossProfit, previousMetrics.GrossProfit),
                 ContinuousSeries(query.Period, daily, d => d.Revenue - d.Cost)),
-            // Маржа: из калькулятора, Δ в п.п., sparse-серия (в пустые дни 0/0).
+            // Маржа: из калькулятора, Δ в п.п., sparse-серия (в пустых бакетах 0/0).
             Margin: new KpiCardModel(
                 currentMetrics.Margin,
                 deltas.PointsDelta(currentMetrics.Margin, previousMetrics.Margin),
-                SparseSeries(daily, MarginOfDay)),
-            // Число продаж: счётчик когорты, Δ%, непрерывная серия по дням.
+                SparseSeries(query.Period, daily, MarginOfBucket)),
+            // Число продаж: счётчик когорты, Δ%, непрерывная серия по бакетам.
             SalesCount: new KpiCardModel(
                 totals.PaidCount,
                 deltas.PercentDelta(totals.PaidCount, previousTotals.PaidCount),
                 ContinuousSeries(query.Period, daily, d => d.PaidCount)),
-            // Средний чек: из калькулятора, Δ%, sparse-серия (в пустые дни 0/0).
+            // Средний чек: из калькулятора, Δ%, sparse-серия (в пустых бакетах 0/0).
             AverageCheck: new KpiCardModel(
                 currentMetrics.AverageCheck,
                 deltas.PercentDelta(currentMetrics.AverageCheck, previousMetrics.AverageCheck),
-                SparseSeries(daily, AverageCheckOfDay)),
+                SparseSeries(query.Period, daily, AverageCheckOfBucket)),
             BestManager: bestManager);
 
         return model;
@@ -120,7 +121,7 @@ public sealed class KpiBuilder(
         var previousLeader = previousAggregates.FirstOrDefault(a => a.Id == leader.Id);
         var previousGrossProfit = previousLeader is null ? 0m : previousLeader.Revenue - previousLeader.Cost;
 
-        // Дневной ряд лидера — серия выручки карточки.
+        // Ряд лидера по бакетам — серия выручки карточки.
         var daily = await managerPort.ReadDailyByManagerAsync(leader.Id, current, cancellationToken);
 
         // Отсутствие лидера в реестре невозможно в консистентных данных (агрегаты
@@ -140,36 +141,49 @@ public sealed class KpiBuilder(
         return model;
     }
 
-    // Маржа дня: ВП / выручка × 100; в день без выручки не определена (0/0) → null.
-    private static decimal? MarginOfDay(DailyAggregateRow d)
+    // Маржа бакета: ВП / выручка × 100; в бакете без выручки не определена (0/0) → null.
+    private static decimal? MarginOfBucket(DailyAggregateRow d)
         => d.Revenue != 0 ? (d.Revenue - d.Cost) / d.Revenue * 100 : null;
 
-    // Средний чек дня: выручка / число сделок; в день без сделок не определён → null.
-    private static decimal? AverageCheckOfDay(DailyAggregateRow d)
+    // Средний чек бакета: выручка / число сделок; в бакете без сделок не определён → null.
+    private static decimal? AverageCheckOfBucket(DailyAggregateRow d)
         => d.PaidCount != 0 ? d.Revenue / d.PaidCount : null;
 
-    /// <summary>Одна точка на каждый день периода; отсутствующие дни несут настоящий ноль.</summary>
+    /// <summary>Одна точка на каждый бакет сетки серий периода
+    /// (<see cref="SeriesBuckets"/>); отсутствующие бакеты несут настоящий ноль.</summary>
     internal static IReadOnlyList<SeriesPointModel> ContinuousSeries(
         DateRange period,
         IReadOnlyList<DailyAggregateRow> daily,
         Func<DailyAggregateRow, decimal> selector)
     {
-        // Индекс «день → значение метрики» для быстрой подстановки в точку серии.
-        var byDay = daily.GroupBy(d => d.Date.Date).ToDictionary(g => g.Key, g => g.Sum(selector));
+        var stepHours = SeriesBuckets.StepHoursOf(period);
 
-        return BuilderCommon
-            .DaysOf(period)
-            .Select(day => new SeriesPointModel(day, byDay.TryGetValue(day, out var value) ? value : 0m))
+        // Индекс «бакет → значение метрики» для быстрой подстановки в точку серии.
+        var byBucket = daily.GroupBy(d => d.Date).ToDictionary(g => g.Key, g => g.Sum(selector));
+
+        return SeriesBuckets
+            .BucketsOf(period)
+            .Select(bucket => new SeriesPointModel(
+                bucket,
+                bucket.AddHours(stepHours),
+                byBucket.TryGetValue(bucket, out var value) ? value : 0m))
             .ToList();
     }
 
-    /// <summary>Точки только для дней, где метрика определена (маржа, средний чек).</summary>
+    /// <summary>Точки только для бакетов, где метрика определена (маржа, средний
+    /// чек); строка ряда уже несёт начало своего бакета — сетка совпадает с
+    /// группировкой рид-порта.</summary>
     internal static IReadOnlyList<SeriesPointModel> SparseSeries(
+        DateRange period,
         IReadOnlyList<DailyAggregateRow> daily,
         Func<DailyAggregateRow, decimal?> selector)
-        => daily
+    {
+        var stepHours = SeriesBuckets.StepHoursOf(period);
+
+        return daily
             .Where(d => selector(d) is not null)
             .OrderBy(d => d.Date)
-            .Select(d => new SeriesPointModel(d.Date.Date, selector(d)!.Value))
+            .Select(d => new SeriesPointModel(d.Date, d.Date.AddHours(stepHours), selector(d)!.Value))
             .ToList();
+    }
 }

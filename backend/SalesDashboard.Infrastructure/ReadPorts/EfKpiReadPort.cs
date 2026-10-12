@@ -6,7 +6,7 @@ using SalesDashboard.Infrastructure.Persistence;
 namespace SalesDashboard.Infrastructure.ReadPorts;
 
 /// <summary>
-/// Источник KPI (backend.md §5.3): итоги периода и дневной ряд оплачиваемой
+/// Источник KPI (backend.md §5.3): итоги периода и ряд по бакетам оплачиваемой
 /// когорты. SQL считает только сырые суммы и счётчики — отношения и Δ остаются
 /// в домене.
 /// </summary>
@@ -53,58 +53,61 @@ public sealed class EfKpiReadPort(SalesDbContext db) : IKpiReadPort
         // Берём оплаченную когорту периода — общая база для обоих запросов.
         var paid = db.Sales.AsNoTracking().InPaidCohort(filter);
 
-        // Группируем оплаченные сделки по дате оплаты (без времени).
-        // Select проецирует ключ группы и счётчик сделок.
+        // Группируем оплаченные сделки по паре (день, час) оплаты: оба поля
+        // транслируются в SQL на любом провайдере, а бакет-ключ строки
+        // собирается ниже в памяти от начала периода
+        // (SeriesBuckets, api.md SeriesPointDto).
+        var stepHours = SeriesBuckets.StepHoursOf(filter.Period);
+
         // Это отдельный запрос от денег, чтобы не размножить строки при JOIN с Items.
         var counts = await paid
-            .GroupBy(s => s.PaidAt!.Value.Date)
-            .Select(g => new { Date = g.Key, Count = g.Count() })
+            .GroupBy(s => new { Date = s.PaidAt!.Value.Date, Hour = s.PaidAt!.Value.Hour })
+            .Select(g => new { g.Key.Date, g.Key.Hour, Count = g.Count() })
             .ToListAsync(cancellationToken);
 
         // Разворачиваем сделки до позиций с флагом возврата и датой.
         // from s in paid — итерируем по оплаченным сделкам.
         // from i in s.Items — вложенная итерация по позициям каждой сделки.
-        // Проецируем дату, статус возврата и финансовые поля позиций.
+        // Проецируем день/час, статус возврата и финансовые поля позиций.
         var itemRows = from s in paid
                        from i in s.Items
                        select new
                        {
                            s.PaidAt!.Value.Date,
+                           s.PaidAt!.Value.Hour,
                            s.RefundedAt,
                            i.Quantity,
                            i.SalePrice,
                            i.UnitCost,
                        };
 
-        // Группируем позиции по дню.
+        // Группируем позиции по паре (день, час).
         // Для каждой группы считаем выручку (только невозвращённые позиции) и себестоимость.
         // ?? 0m защищает от NULL при пустой группе.
         var money = await itemRows
-            .GroupBy(x => x.Date)
+            .GroupBy(x => new { x.Date, x.Hour })
             .Select(g => new
             {
-                Date = g.Key,
+                g.Key.Date,
+                g.Key.Hour,
                 Revenue = g.Where(x => x.RefundedAt == null).Sum(x => (decimal?)(x.SalePrice * x.Quantity)) ?? 0m,
                 Cost = g.Where(x => x.RefundedAt == null).Sum(x => (decimal?)(x.UnitCost * x.Quantity)) ?? 0m,
             })
             .ToListAsync(cancellationToken);
 
-        // Создаём словарь «день → число сделок» для быстрого доступа.
-        var countByDay = counts.ToDictionary(c => c.Date, c => c.Count);
-
-        // Собираем финальные строки: берём данные из money, добавляем счётчик из countByDay.
-        // OrderBy — упорядочиваем по дате возрастания.
-        // TryGetValue — если день есть в counts, берём счётчик, иначе 0.
-        var dailyRows = money
-            .OrderBy(m => m.Date)
-            .Select(m => new DailyAggregateRow(
-                m.Date,
-                m.Revenue,
-                m.Cost,
-                countByDay.TryGetValue(m.Date, out var count) ? count : 0))
+        // (день, час)-группы SQL сворачиваются в строки-бакеты общей сборкой
+        // (SeriesBucketRows, api.md SeriesPointDto).
+        var countRows = counts
+            .Select(c => new SeriesBucketRows.CountRow(c.Date, c.Hour, c.Count))
             .ToList();
 
-        // Возвращаем отсортированный список дневных строк.
+        var moneyRows = money
+            .Select(m => new SeriesBucketRows.MoneyRow(m.Date, m.Hour, m.Revenue, m.Cost))
+            .ToList();
+
+        var dailyRows = SeriesBucketRows.MoneyAndCountRows(filter.Period, stepHours, moneyRows, countRows);
+
+        // Возвращаем отсортированный список строк-бакетов.
         return dailyRows;
     }
 }

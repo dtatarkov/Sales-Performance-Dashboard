@@ -13,7 +13,7 @@ internal static class SharedDtoMapper
         => delta is null ? null : new DeltaDto(delta.Value, delta.Unit);
 
     public static SeriesPointDto MapSeriesPoint(SeriesPointModel point)
-        => new(point.Value, point.Date);
+        => new(point.Value, point.DateFrom, point.DateTo);
 
     public static ContributionDto MapContribution(ContributionModel contribution)
         => new(contribution.ValueAbsolute, contribution.ValueRelative, contribution.ValueRelativeUnit, contribution.ValueNormalized);
